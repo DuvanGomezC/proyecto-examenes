@@ -628,17 +628,43 @@ code { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 2px 
 @media (max-width: 768px) {
   .dashboard__main { padding: var(--space-md); }
   .page-header { flex-direction: column; align-items: flex-start; }
-  .topbar { padding: 0 var(--space-md); }
+  
+  /* Topbar Mobile Fixes */
+  .topbar { padding: 0 12px; }
+  .topbar__brand { font-size: 0.95rem; gap: 8px; }
+  .topbar__logo { width: 28px; height: 28px; }
   .topbar__name { display: none; }
+  .topbar__user .btn { padding: 8px; font-size: 0; gap: 0; }
+  .topbar__user .btn svg { width: 18px; height: 18px; margin: 0; }
+
+  /* Tabs */
   .tabs-bar { padding: 0 var(--space-md); }
+  
+  /* Questions & Modals */
   .question-card { padding: var(--space-lg); }
   .question-text { font-size: 1.05rem; }
   .form-grid { grid-template-columns: 1fr; }
   .modal { max-width: 100%; margin: auto var(--space-sm); }
-  .exam-header { padding: 0 var(--space-md); }
-  .exam-meta { display: none; }
   .result-modal { padding: var(--space-xl) var(--space-lg); }
+  
+  /* Exam Header Mobile Fixes */
+  .exam-header { 
+    height: auto; 
+    flex-direction: column; 
+    padding: 12px var(--space-md); 
+    gap: 8px; 
+    text-align: center;
+  }
+  .exam-header__left { justify-content: center; width: 100%; }
+  .exam-title { font-size: 0.95rem; }
+  .exam-meta { display: none; }
+  .counter-badge { width: 100%; max-width: 250px; font-size: 0.8rem; }
+  
+  /* Exam Navigation Fixes */
+  .exam-nav { flex-direction: column-reverse; gap: 10px; width: 100%; }
+  .exam-nav .btn { width: 100%; justify-content: center; }
 }
+
 @media (max-width: 480px) {
   .login-card__header { padding: var(--space-lg); }
   .login-card__body { padding: var(--space-lg); }

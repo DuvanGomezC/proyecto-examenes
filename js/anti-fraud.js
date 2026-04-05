@@ -51,7 +51,7 @@ window.AntiFraud = (() => {
             alert(`¡ADVERTENCIA DE FRAUDE! Has salido del examen por más de 5 segundos (${warnings}/3). Si sumas ${remaining === 1 ? '1 vez más' : remaining + ' veces más'}, se finalizará tu examen.`);
           }
         }
-      }, 1000);
+      }, 3000);
     } else {
       if (blurTimer) {
         clearTimeout(blurTimer);
