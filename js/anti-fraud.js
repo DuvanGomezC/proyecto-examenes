@@ -60,6 +60,10 @@ window.AntiFraud = (() => {
     }
   };
 
+  const preventCopy = (e) => {
+    if (active) e.preventDefault();
+  };
+
   const start = (callback) => {
     warnings = 0;
     active = true;
@@ -67,6 +71,9 @@ window.AntiFraud = (() => {
     onMaxViolations = callback;
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('copy', preventCopy);
+    document.addEventListener('contextmenu', preventCopy);
+    document.addEventListener('selectstart', preventCopy);
   };
 
   const stop = () => {
@@ -76,6 +83,9 @@ window.AntiFraud = (() => {
       blurTimer = null;
     }
     document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.removeEventListener('copy', preventCopy);
+    document.removeEventListener('contextmenu', preventCopy);
+    document.removeEventListener('selectstart', preventCopy);
   };
 
   return { start, stop };

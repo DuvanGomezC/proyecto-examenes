@@ -504,6 +504,8 @@ code { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 2px 
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   padding: var(--space-xl) var(--space-md);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .question-card {
