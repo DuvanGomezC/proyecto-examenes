@@ -60,7 +60,7 @@ function addHeader(doc, logoDataUrl) {
   doc.text(INST_NAME, pageW / 2, 13, { align: 'center' });
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('LICENCIA DE FUNCIONAMIENTO:N° 3273 DE 2026 | Arauca, Colombia', pageW / 2, 22, { align: 'center' });
+  doc.text('LICENCIA DE FUNCIONAMIENTO:N° 3273 DE 2016 | Arauca, Colombia', pageW / 2, 22, { align: 'center' });
   doc.setTextColor(0, 0, 0);
 }
 
