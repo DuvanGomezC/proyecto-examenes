@@ -1,57 +1,69 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+/**
+ * backend/db.js — INARFOTEC Exam System
+ * Cliente Supabase para el backend (usa service_role → ignora RLS).
+ * Exporta: { supabase, sha256 }
+ */
+
+'use strict';
+
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-const fs = require('fs');
 
-const dbPath = path.join(__dirname, '..', 'database', 'inarfotec.db');
-const db = new Database(dbPath, { verbose: null });
+// ── Validar variables de entorno ────────────────────────────────────────────
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// Setup schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS usuarios (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombres   TEXT    NOT NULL,
-    apellidos TEXT    NOT NULL,
-    documento TEXT    NOT NULL UNIQUE,
-    contrasena TEXT   NOT NULL,
-    programa  TEXT    NOT NULL CHECK(programa IN ('Operación de Maquinaria','Mecánica Diesel','Mecánica Automotriz')),
-    rol       TEXT    NOT NULL CHECK(rol IN ('Estudiante','Instructor')),
-    estado    TEXT    NOT NULL DEFAULT 'Activo' CHECK(estado IN ('Activo','Inactivo'))
-  );
-  CREATE TABLE IF NOT EXISTS examenes (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    titulo         TEXT    NOT NULL,
-    preguntas      TEXT    NOT NULL,
-    estado         TEXT    NOT NULL DEFAULT 'Deshabilitado' CHECK(estado IN ('Habilitado','Deshabilitado')),
-    fecha_creacion TEXT    NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS resultados (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    id_estudiante TEXT   NOT NULL,
-    id_examen    INTEGER NOT NULL,
-    puntuacion   REAL    NOT NULL,
-    respuestas   TEXT    NOT NULL,
-    fecha        TEXT    NOT NULL
-  );
-`);
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('❌  Faltan variables de entorno: SUPABASE_URL y/o SUPABASE_SERVICE_KEY');
+  process.exit(1);
+}
 
-// Helper: SHA-256 for passwords
+// ── Cliente Supabase con service_role (acceso total, seguro desde server) ───
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false
+  }
+});
+
+// ── Utilidad: hash SHA-256 para contraseñas ─────────────────────────────────
 function sha256(message) {
   return crypto.createHash('sha256').update(message).digest('hex');
 }
 
-// Seed admin user
-try {
-  const existing = db.prepare("SELECT id FROM usuarios WHERE documento='1106899671'").get();
-  if (!existing) {
-    const hash = sha256('Arcade20044$');
-    db.prepare(`
-      INSERT INTO usuarios (nombres, apellidos, documento, contrasena, programa, rol, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run('Duvan Gomez Cortes', '', '1106899671', hash, 'Mecánica Automotriz', 'Instructor', 'Activo');
+// ── Seed: asegurar que el usuario admin exista al iniciar ───────────────────
+async function seedAdmin() {
+  try {
+    const { data: existing } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('documento', '1106899671')
+      .maybeSingle();
+
+    if (!existing) {
+      const hash = sha256('Arcade20044$');
+      const { error } = await supabase.from('usuarios').insert({
+        nombres:    'Duvan Gomez Cortes',
+        apellidos:  '',
+        documento:  '1106899671',
+        contrasena: hash,
+        programa:   'Mecánica Automotriz',
+        rol:        'Instructor',
+        estado:     'Activo'
+      });
+      if (error) {
+        console.error('⚠️  Error al crear usuario admin:', error.message);
+      } else {
+        console.log('✅  Usuario admin creado correctamente.');
+      }
+    }
+  } catch (e) {
+    console.error('⚠️  Error en seedAdmin:', e.message);
   }
-} catch (e) {
-  console.error("Error seeding admin:", e);
 }
 
-module.exports = { db, sha256 };
+seedAdmin();
+
+module.exports = { supabase, sha256 };

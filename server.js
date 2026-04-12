@@ -1,7 +1,11 @@
 /**
  * server.js — INARFOTEC Exam System
- * Express server: serves static frontend + REST API backed by SQLite.
+ * Express server: sirve el frontend estático + API REST respaldada por Supabase (PostgreSQL).
  */
+
+'use strict';
+
+require('dotenv').config();
 
 const express = require('express');
 const path    = require('path');
@@ -9,26 +13,26 @@ const path    = require('path');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
+// ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
 
-// Serve the frontend (index.html, styles.css, js/, assets/)
+// Servir el frontend (index.html, styles.css, js/, assets/)
 app.use(express.static(path.join(__dirname)));
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
+// ─── Rutas de la API ───────────────────────────────────────────────────────────
 app.use('/api/auth',    require('./backend/routes/auth'));
 app.use('/api/users',   require('./backend/routes/users'));
 app.use('/api/exams',   require('./backend/routes/exams'));
 app.use('/api/results', require('./backend/routes/results'));
 
-// ─── SPA Fallback ─────────────────────────────────────────────────────────────
+// ─── SPA Fallback ──────────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
+// ─── Iniciar servidor ──────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n✅  INARFOTEC — Servidor iniciado`);
   console.log(`🌐  Abrir en:  http://localhost:${PORT}`);
-  console.log(`📂  Base de datos: ./database/inarfotec.db\n`);
+  console.log(`☁️   Base de datos: Supabase (PostgreSQL)\n`);
 });

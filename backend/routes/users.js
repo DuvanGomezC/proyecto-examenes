@@ -1,72 +1,120 @@
+'use strict';
+
 const express = require('express');
 const router = express.Router();
-const { db, sha256 } = require('../db');
+const { supabase, sha256 } = require('../db');
 
-function sanitizeText(str) { return typeof str === 'string' ? str.trim().replace(/[<>]/g, '') : ''; }
-function sanitizeNumeric(str) { return typeof str === 'string' ? str.replace(/\\D/g, '') : String(str).replace(/\\D/g, ''); }
+function sanitizeText(str) {
+  return typeof str === 'string' ? str.trim().replace(/[<>]/g, '') : '';
+}
+function sanitizeNumeric(str) {
+  return typeof str === 'string' ? str.replace(/\D/g, '') : String(str).replace(/\D/g, '');
+}
 
-router.get('/', (req, res) => {
+// GET /api/users — listar todos los usuarios
+router.get('/', async (req, res) => {
   try {
-    const users = db.prepare("SELECT id, nombres, apellidos, documento, programa, rol, estado FROM usuarios ORDER BY rol, apellidos").all();
-    res.json(users);
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('id, nombres, apellidos, documento, programa, rol, estado')
+      .order('rol', { ascending: true })
+      .order('apellidos', { ascending: true });
+
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
+    console.error('Error GET /users:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/', (req, res) => {
+// POST /api/users — crear usuario
+router.post('/', async (req, res) => {
   const { nombres, apellidos, documento, contrasena, programa, rol, estado } = req.body;
   try {
     const hash = sha256(contrasena);
-    const stmt = db.prepare(`
-      INSERT INTO usuarios (nombres, apellidos, documento, contrasena, programa, rol, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    const info = stmt.run(
-      sanitizeText(nombres), sanitizeText(apellidos), sanitizeNumeric(documento),
-      hash, programa, rol, estado || 'Activo'
-    );
-    res.json({ id: info.lastInsertRowid });
+    const { data, error } = await supabase
+      .from('usuarios')
+      .insert({
+        nombres:    sanitizeText(nombres),
+        apellidos:  sanitizeText(apellidos),
+        documento:  sanitizeNumeric(documento),
+        contrasena: hash,
+        programa,
+        rol,
+        estado: estado || 'Activo'
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    res.json({ id: data.id });
   } catch (err) {
+    console.error('Error POST /users:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/:id', (req, res) => {
+// PUT /api/users/:id — actualizar usuario (con o sin contraseña)
+router.put('/:id', async (req, res) => {
   const id = req.params.id;
   const { nombres, apellidos, documento, contrasena, programa, rol, estado } = req.body;
   try {
-    let stmt;
+    const updateData = {
+      nombres:   sanitizeText(nombres),
+      apellidos: sanitizeText(apellidos),
+      documento: sanitizeNumeric(documento),
+      programa,
+      rol,
+      estado
+    };
     if (contrasena) {
-      const hash = sha256(contrasena);
-      stmt = db.prepare(`UPDATE usuarios SET nombres=?, apellidos=?, documento=?, contrasena=?, programa=?, rol=?, estado=? WHERE id=?`);
-      stmt.run(sanitizeText(nombres), sanitizeText(apellidos), sanitizeNumeric(documento), hash, programa, rol, estado, id);
-    } else {
-      stmt = db.prepare(`UPDATE usuarios SET nombres=?, apellidos=?, documento=?, programa=?, rol=?, estado=? WHERE id=?`);
-      stmt.run(sanitizeText(nombres), sanitizeText(apellidos), sanitizeNumeric(documento), programa, rol, estado, id);
+      updateData.contrasena = sha256(contrasena);
     }
+
+    const { error } = await supabase
+      .from('usuarios')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) throw error;
     res.json({ success: true });
   } catch (err) {
+    console.error('Error PUT /users/:id:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/:id/status', (req, res) => {
+// PUT /api/users/:id/status — cambiar estado (Activo/Inactivo)
+router.put('/:id/status', async (req, res) => {
   const id = req.params.id;
   const { estado } = req.body;
   try {
-    db.prepare("UPDATE usuarios SET estado=? WHERE id=?").run(estado, id);
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ estado })
+      .eq('id', id);
+
+    if (error) throw error;
     res.json({ success: true });
   } catch (err) {
+    console.error('Error PUT /users/:id/status:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/:id', (req, res) => {
+// DELETE /api/users/:id — eliminar usuario
+router.delete('/:id', async (req, res) => {
   try {
-    db.prepare("DELETE FROM usuarios WHERE id=?").run(req.params.id);
+    const { error } = await supabase
+      .from('usuarios')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
     res.json({ success: true });
   } catch (err) {
+    console.error('Error DELETE /users/:id:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
