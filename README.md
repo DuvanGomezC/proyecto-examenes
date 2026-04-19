@@ -28,3 +28,5 @@ Sistema web integral de gestión académica y evaluación en tiempo real diseña
 ## Despliegue (Deploy)
 
 Revisar las instrucciones de Render.com provistas por el desarrollador para advertencias de persistencia (Discos Ephemeral en la Capa Gratuita).
+
+analiza al detalle la parte visual ya que por alguna razon al renderizar los nombres y documentos renderizados algunas veces son erroneos ademas si la nota es menor a tres 3.5 el color renderizado debe ser verde y si es 3.0 asia abajo rojo y verifica posibles errores sin afectar nada mas

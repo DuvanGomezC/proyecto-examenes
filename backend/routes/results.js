@@ -92,7 +92,7 @@ router.get('/all', async (req, res) => {
     if (uErr) throw uErr;
 
     const userMap = {};
-    (usuarios || []).forEach(u => { userMap[u.documento] = u; });
+    (usuarios || []).forEach(u => { userMap[String(u.documento).trim()] = u; });
 
     // 3. Traer todos los exámenes involucrados (indexados por id)
     const examIds = [...new Set(resultados.map(r => r.id_examen))];
@@ -108,7 +108,7 @@ router.get('/all', async (req, res) => {
 
     // 4. Combinar — misma forma que retornaba SQLite
     const combined = resultados.map(r => {
-      const u = userMap[r.id_estudiante] || {};
+      const u = userMap[String(r.id_estudiante).trim()] || {};
       return {
         id:         r.id,
         nombres:    u.nombres    || '',

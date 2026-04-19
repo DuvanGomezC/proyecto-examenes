@@ -26,12 +26,22 @@ window.addEventListener('hashchange', router);
 function getApp() { return document.getElementById('app'); }
 
 // ─── Shared Helpers ───────────────────────────────────────────────────────────
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function showToast(message, type = 'success') {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
   const toast = document.createElement('div');
   toast.className = `toast toast--${type}`;
-  toast.innerHTML = `<span class="toast__icon">${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span> ${message}`;
+  toast.innerHTML = `<span class="toast__icon">${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span> ${escapeHtml(message)}`;
   document.body.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('toast--show'));
   setTimeout(() => {
@@ -209,10 +219,10 @@ async function renderStudentDashboard() {
         <thead><tr><th>Módulo / Examen</th><th>Puntaje</th><th>Fecha</th><th>Estado</th></tr></thead>
         <tbody>${history.map(r => `
           <tr>
-            <td>${r.titulo}</td>
+            <td>${escapeHtml(r.titulo)}</td>
             <td><strong>${parseFloat(r.puntuacion).toFixed(1)}</strong> / 5.0</td>
             <td>${formatDate(r.fecha)}</td>
-            <td><span class="badge ${parseFloat(r.puntuacion) >= 3.5 ? 'badge--success' : 'badge--danger'}">${parseFloat(r.puntuacion) >= 3.5 ? 'Aprobado' : 'No Aprobado'}</span></td>
+            <td><span class="badge ${parseFloat(r.puntuacion) > 3.0 ? 'badge--success' : 'badge--danger'}">${parseFloat(r.puntuacion) > 3.0 ? 'Aprobado' : 'No Aprobado'}</span></td>
           </tr>`).join('')}
         </tbody>
       </table></div>`;
@@ -225,8 +235,8 @@ async function renderStudentDashboard() {
           <span>INARFOTEC</span>
         </div>
         <div class="topbar__user">
-          <span class="topbar__name">${user.nombres}</span>
-          <span class="badge badge--info">${user.programa}</span>
+          <span class="topbar__name">${escapeHtml(user.nombres)}</span>
+          <span class="badge badge--info">${escapeHtml(user.programa)}</span>
           <button class="btn btn--ghost btn--sm" id="logout-btn">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Cerrar Sesión
@@ -236,8 +246,8 @@ async function renderStudentDashboard() {
       <main class="dashboard__main">
         <div class="page-header">
           <div>
-            <h1>Bienvenido, ${user.nombres}</h1>
-            <p class="text-muted">Documento: ${user.documento} &bull; ${user.programa}</p>
+            <h1>Bienvenido, ${escapeHtml(user.nombres)}</h1>
+            <p class="text-muted">Documento: ${escapeHtml(user.documento)} &bull; ${escapeHtml(user.programa)}</p>
           </div>
           ${examBtnHtml}
         </div>
@@ -325,8 +335,8 @@ async function renderExamQuestion() {
         <div class="exam-header__left">
           <img src="assets/logo.png" alt="Logo" class="topbar__logo" onerror="this.style.display='none'">
           <div>
-            <span class="exam-title">${exam.titulo}</span>
-            <span class="exam-meta">${_examState.user.nombres}</span>
+            <span class="exam-title">${escapeHtml(exam.titulo)}</span>
+            <span class="exam-meta">${escapeHtml(_examState.user.nombres)}</span>
           </div>
         </div>
         <div class="exam-header__counter">
@@ -391,7 +401,7 @@ async function submitExam() {
   await DB.saveResult(user.documento, exam.id, score, answers);
 
   // Show result modal then logout
-  const passed = score >= 3.5;
+  const passed = score > 3.0;
   showModal(`
     <div class="result-modal" style="position:relative;">
       <button class="modal__close" id="exam-modal-close" style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #555;">✕</button>
@@ -399,7 +409,7 @@ async function submitExam() {
         ${passed ? '🏆' : '📚'}
       </div>
       <h2>${passed ? '¡Felicitaciones!' : 'Examen Finalizado'}</h2>
-      <p class="result-modal__student">${user.nombres} ${user.apellidos}</p>
+      <p class="result-modal__student">${escapeHtml(user.nombres)} ${escapeHtml(user.apellidos)}</p>
       <div class="score-display">
         <span class="score-display__number ${passed ? 'score-display__number--pass' : 'score-display__number--fail'}">${score.toFixed(1)}</span>
         <span class="score-display__denom">/ 5.0</span>
@@ -454,7 +464,7 @@ async function renderInstructorDashboard() {
           <span>INARFOTEC <em>Admin</em></span>
         </div>
         <div class="topbar__user">
-          <span class="topbar__name">${user.nombres}</span>
+          <span class="topbar__name">${escapeHtml(user.nombres)}</span>
           <span class="badge badge--warning">Instructor</span>
           <button class="btn btn--ghost btn--sm" id="logout-btn">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -516,10 +526,10 @@ async function renderUsersTab() {
               ${users.length === 0 ? `<tr><td colspan="7" class="text-center text-muted">No hay usuarios registrados.</td></tr>` : ''}
               ${users.map(u => `
                 <tr>
-                  <td><code>${u.documento}</code></td>
-                  <td>${u.nombres}</td>
-                  <td>${u.apellidos}</td>
-                  <td><span class="badge badge--info">${u.programa}</span></td>
+                  <td><code>${escapeHtml(u.documento)}</code></td>
+                  <td>${escapeHtml(u.nombres)}</td>
+                  <td>${escapeHtml(u.apellidos)}</td>
+                  <td><span class="badge badge--info">${escapeHtml(u.programa)}</span></td>
                   <td><span class="badge ${u.rol === 'Instructor' ? 'badge--warning' : 'badge--secondary'}">${u.rol}</span></td>
                   <td><span class="badge ${u.estado === 'Activo' ? 'badge--success' : 'badge--danger'}">${u.estado}</span></td>
                   <td class="actions-cell">
@@ -528,7 +538,7 @@ async function renderUsersTab() {
                       ? `<button class="btn btn--ghost btn--sm" data-action="toggle" data-id="${u.id}" data-estado="${u.estado}" title="${u.estado === 'Activo' ? 'Inactivar' : 'Activar'}">
                           ${u.estado === 'Activo' ? '🔒' : '🔓'}
                          </button>
-                         <button class="btn btn--ghost btn--sm" data-action="delete" data-id="${u.id}" data-nombre="${u.nombres} ${u.apellidos}" title="Eliminar">🗑️</button>`
+                         <button class="btn btn--ghost btn--sm" data-action="delete" data-id="${u.id}" data-nombre="${escapeHtml(u.nombres)} ${escapeHtml(u.apellidos)}" title="Eliminar">🗑️</button>`
                       : `<span class="text-muted" title="Mi cuenta">—</span>`}
                   </td>
                 </tr>`).join('')}
@@ -692,14 +702,14 @@ async function renderExamsTab() {
               ${exams.map(ex => `
                 <tr>
                   <td>#${ex.id}</td>
-                  <td><strong>${ex.titulo}</strong></td>
+                  <td><strong>${escapeHtml(ex.titulo)}</strong></td>
                   <td><span class="badge ${ex.estado==='Habilitado'?'badge--success':'badge--secondary'}">${ex.estado}</span></td>
                   <td>${formatDate(ex.fecha_creacion)}</td>
                   <td class="actions-cell">
                     ${ex.estado === 'Deshabilitado'
                       ? `<button class="btn btn--sm btn--success" data-action="enable" data-id="${ex.id}">✓ Habilitar</button>`
                       : `<button class="btn btn--sm btn--outline" data-action="disable" data-id="${ex.id}">⊘ Deshabilitar</button>`}
-                    <button class="btn btn--ghost btn--sm" data-action="delete-exam" data-id="${ex.id}" data-titulo="${ex.titulo}" title="Eliminar">🗑️</button>
+                    <button class="btn btn--ghost btn--sm" data-action="delete-exam" data-id="${ex.id}" data-titulo="${escapeHtml(ex.titulo)}" title="Eliminar">🗑️</button>
                   </td>
                 </tr>`).join('')}
             </tbody>
@@ -907,7 +917,7 @@ async function renderResultsTab() {
       <div class="page-header">
         <div>
           <button class="btn btn--outline btn--sm" id="back-to-exams-btn" style="margin-bottom:8px;">← Volver</button>
-          <h1>Resultados: ${examTitle}</h1>
+          <h1>Resultados: ${escapeHtml(examTitle)}</h1>
           <p class="text-muted">${examResults.length} estudiante(s) evaluados</p>
         </div>
         <button class="btn btn--outline" id="refresh-results-btn">↻ Actualizar</button>
@@ -924,20 +934,20 @@ async function renderResultsTab() {
                 ${examResults.length === 0 ? `<tr><td colspan="6" class="text-center text-muted">No hay resultados.</td></tr>` : ''}
                 ${examResults.map(r => `
                   <tr>
-                    <td>${r.nombres} ${r.apellidos}</td>
-                    <td><code>${r.documento}</code></td>
-                    <td><span class="badge badge--info">${r.programa}</span></td>
+                    <td>${escapeHtml(r.nombres)} ${escapeHtml(r.apellidos)}</td>
+                    <td><code>${escapeHtml(r.documento)}</code></td>
+                    <td><span class="badge badge--info">${escapeHtml(r.programa)}</span></td>
                     <td>
-                      <span class="score-pill ${parseFloat(r.puntuacion)>=3.0?'score-pill--pass':'score-pill--fail'}">
+                      <span class="score-pill ${parseFloat(r.puntuacion) > 3.0 ? 'score-pill--pass' : 'score-pill--fail'}">
                         ${parseFloat(r.puntuacion).toFixed(1)} / 5.0
                       </span>
                     </td>
                     <td>${formatDate(r.fecha)}</td>
                     <td class="actions-cell">
-                      <button class="btn btn--sm btn--primary" data-action="pdf-result" data-rid="${r.id}" data-doc="${r.documento}" data-examid="${r.id_examen}">
+                      <button class="btn btn--sm btn--primary" data-action="pdf-result" data-rid="${r.id}" data-doc="${escapeHtml(r.documento)}" data-examid="${r.id_examen}">
                         📄 PDF
                       </button>
-                      <button class="btn btn--sm btn--outline" style="border-color:#e63946; color:#e63946;" data-action="delete-result" data-rid="${r.id}" data-estudiante="${r.nombres} ${r.apellidos}">
+                      <button class="btn btn--sm btn--outline" style="border-color:#e63946; color:#e63946;" data-action="delete-result" data-rid="${r.id}" data-estudiante="${escapeHtml(r.nombres)} ${escapeHtml(r.apellidos)}">
                         🗑️ Eliminar
                       </button>
                     </td>
@@ -1010,7 +1020,7 @@ async function renderResultsTab() {
                 ${examsSummary.length === 0 ? `<tr><td colspan="3" class="text-center text-muted">Aún no hay exámenes evaluados.</td></tr>` : ''}
                 ${examsSummary.map(es => `
                   <tr>
-                    <td><strong>${es.titulo}</strong></td>
+                    <td><strong>${escapeHtml(es.titulo)}</strong></td>
                     <td>${es.total} estudiante(s)</td>
                     <td class="actions-cell">
                       <button class="btn btn--sm btn--primary" data-action="view-exam" data-examid="${es.id}">
