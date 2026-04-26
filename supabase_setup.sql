@@ -155,3 +155,41 @@ ON CONFLICT (documento) DO NOTHING;
 --    tablas aparezcan con sus columnas y que el usuario admin
 --    esté en la tabla 'usuarios'.
 -- ─────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────
+-- MÓDULO DE TALLERES — Ejecutar en Supabase SQL Editor
+-- ─────────────────────────────────────────────────────────────
+
+-- 7. TABLA: talleres
+CREATE TABLE IF NOT EXISTS public.talleres (
+  id             BIGSERIAL   PRIMARY KEY,
+  titulo         TEXT        NOT NULL,
+  preguntas      TEXT        NOT NULL,   -- JSON: [{id,texto,campos:[bio,que,para_que,ejemplo]}]
+  estado         TEXT        NOT NULL DEFAULT 'Deshabilitado'
+                   CHECK (estado IN ('Habilitado','Deshabilitado')),
+  fecha_creacion TEXT        NOT NULL
+);
+
+ALTER TABLE public.talleres ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all_talleres"
+  ON public.talleres FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- 8. TABLA: resultados_taller
+CREATE TABLE IF NOT EXISTS public.resultados_taller (
+  id             BIGSERIAL   PRIMARY KEY,
+  id_estudiante  TEXT        NOT NULL,
+  id_taller      BIGINT      NOT NULL REFERENCES public.talleres(id) ON DELETE CASCADE,
+  respuestas     TEXT        NOT NULL,   -- JSON de respuestas del estudiante
+  puntuacion     REAL,                  -- NULL hasta que el instructor califique
+  fecha          TEXT        NOT NULL
+);
+
+ALTER TABLE public.resultados_taller ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all_resultados_taller"
+  ON public.resultados_taller FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- ✅ Tablas de talleres listas.

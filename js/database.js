@@ -137,6 +137,102 @@ window.DB = {
     return await res.json();
   },
 
+  async updateExamResult(id, puntuacion, motivo_modificacion) {
+    const res = await fetch(`/api/results/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ puntuacion, motivo_modificacion })
+    });
+    return await res.json();
+  },
+
+  // ─── TALLERES (Workshops) ──────────────────────────────────────────────────────────────
+  async getAllWorkshops() {
+    const res = await fetch(`${API_BASE}/talleres`);
+    return await res.json();
+  },
+
+  async getActiveWorkshop() {
+    const res = await fetch(`${API_BASE}/talleres/active`);
+    return await res.json();
+  },
+
+  async getWorkshopById(id) {
+    const res = await fetch(`${API_BASE}/talleres/${id}`);
+    return await res.json();
+  },
+
+  async createWorkshop(titulo, preguntas) {
+    const res = await fetch(`${API_BASE}/talleres`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titulo, preguntas })
+    });
+    if (!res.ok) throw new Error('Error creating workshop');
+    return await res.json();
+  },
+
+  async enableWorkshop(id) {
+    const res = await fetch(`${API_BASE}/talleres/${id}/enable`, { method: 'PUT' });
+    if (!res.ok) throw new Error('Error enabling workshop');
+    return await res.json();
+  },
+
+  async disableWorkshop(id) {
+    const res = await fetch(`${API_BASE}/talleres/${id}/disable`, { method: 'PUT' });
+    if (!res.ok) throw new Error('Error disabling workshop');
+    return await res.json();
+  },
+
+  async deleteWorkshop(id) {
+    const res = await fetch(`${API_BASE}/talleres/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Error deleting workshop');
+    return await res.json();
+  },
+
+  // ── Resultados de Taller ──────────────────────────────────────────────────
+  async saveWorkshopResult(id_estudiante, id_taller, respuestas) {
+    const res = await fetch(`${API_BASE}/workshop-results`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_estudiante, id_taller, respuestas })
+    });
+    if (!res.ok) throw new Error('Error saving workshop result');
+    return await res.json();
+  },
+
+  async getWorkshopResultsByStudent(documento) {
+    const res = await fetch(`${API_BASE}/workshop-results/student/${documento}`);
+    return await res.json();
+  },
+
+  async getAllWorkshopResults() {
+    const res = await fetch(`${API_BASE}/workshop-results/all`);
+    return await res.json();
+  },
+
+  async studentHasWorkshopToday(documento, idTaller) {
+    const res = await fetch(`${API_BASE}/workshop-results/check-today?documento=${documento}&idTaller=${idTaller}`);
+    const data = await res.json();
+    return data.hasWorkshopToday;
+  },
+
+  async gradeWorkshopResult(id, puntuacion) {
+    const res = await fetch(`${API_BASE}/workshop-results/${id}/grade`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ puntuacion })
+    });
+    if (!res.ok) throw new Error('Error grading workshop result');
+    return await res.json();
+  },
+
+  async deleteWorkshopResult(id) {
+    const res = await fetch(`${API_BASE}/workshop-results/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Error deleting workshop result');
+    return await res.json();
+  },
+
   // Utilities
   shuffleExamQuestions(examToShuffle) {
     const exam = JSON.parse(JSON.stringify(examToShuffle)); // Deep copy

@@ -1,88 +1,86 @@
 'use strict';
 
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 const { supabase } = require('../db');
 
-// POST /api/results — registrar resultado de examen
+// POST /api/workshop-results — guardar entrega del estudiante (sin puntuación aún)
 router.post('/', async (req, res) => {
-  const { id_estudiante, id_examen, puntuacion, respuestas } = req.body;
+  const { id_estudiante, id_taller, respuestas } = req.body;
   const fecha = new Date().toISOString();
   try {
     const { error } = await supabase
-      .from('resultados')
+      .from('resultados_taller')
       .insert({
         id_estudiante,
-        id_examen:  Number(id_examen),
-        puntuacion,
+        id_taller:  Number(id_taller),
         respuestas: JSON.stringify(respuestas),
+        puntuacion: null,
         fecha
       });
 
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {
-    console.error('Error POST /results:', err.message);
+    console.error('Error POST /workshop-results:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/results/student/:documento — resultados de un estudiante específico
+// GET /api/workshop-results/student/:documento — entregas de un estudiante
 router.get('/student/:documento', async (req, res) => {
   try {
-    // 1. Traer resultados del estudiante
     const { data: resultados, error: rErr } = await supabase
-      .from('resultados')
-      .select('id, id_estudiante, id_examen, puntuacion, respuestas, fecha, motivo_modificacion')
+      .from('resultados_taller')
+      .select('id, id_estudiante, id_taller, respuestas, puntuacion, fecha')
       .eq('id_estudiante', req.params.documento)
       .order('fecha', { ascending: false });
 
     if (rErr) throw rErr;
     if (!resultados || resultados.length === 0) return res.json([]);
 
-    // 2. Traer los títulos de los exámenes involucrados
-    const examIds = [...new Set(resultados.map(r => r.id_examen))];
-    const { data: examenes, error: eErr } = await supabase
-      .from('examenes')
+    // Traer títulos de los talleres
+    const tallerIds = [...new Set(resultados.map(r => r.id_taller))];
+    const { data: talleres, error: tErr } = await supabase
+      .from('talleres')
       .select('id, titulo')
-      .in('id', examIds);
+      .in('id', tallerIds);
 
-    if (eErr) throw eErr;
+    if (tErr) throw tErr;
 
-    const examMap = {};
-    (examenes || []).forEach(e => { examMap[e.id] = e.titulo; });
+    const tallerMap = {};
+    (talleres || []).forEach(t => { tallerMap[t.id] = t.titulo; });
 
-    // 3. Combinar
     const results = resultados.map(r => ({
       id:            r.id,
       id_estudiante: r.id_estudiante,
-      id_examen:     r.id_examen,
+      id_taller:     r.id_taller,
       puntuacion:    r.puntuacion,
       respuestas:    r.respuestas,
       fecha:         r.fecha,
-      titulo:        examMap[r.id_examen] || ''
+      titulo:        tallerMap[r.id_taller] || '',
+      tipo:          'taller'
     }));
 
     res.json(results);
   } catch (err) {
-    console.error('Error GET /results/student/:documento:', err.message);
+    console.error('Error GET /workshop-results/student/:documento:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/results/all — todos los resultados (vista del instructor)
+// GET /api/workshop-results/all — todos los resultados (instructor)
 router.get('/all', async (req, res) => {
   try {
-    // 1. Traer todos los resultados
     const { data: resultados, error: rErr } = await supabase
-      .from('resultados')
-      .select('id, id_estudiante, id_examen, puntuacion, respuestas, fecha, motivo_modificacion')
+      .from('resultados_taller')
+      .select('id, id_estudiante, id_taller, respuestas, puntuacion, fecha')
       .order('fecha', { ascending: false });
 
     if (rErr) throw rErr;
     if (!resultados || resultados.length === 0) return res.json([]);
 
-    // 2. Traer todos los usuarios (indexados por documento)
+    // Usuarios
     const documentos = [...new Set(resultados.map(r => r.id_estudiante))];
     const { data: usuarios, error: uErr } = await supabase
       .from('usuarios')
@@ -94,19 +92,18 @@ router.get('/all', async (req, res) => {
     const userMap = {};
     (usuarios || []).forEach(u => { userMap[String(u.documento).trim()] = u; });
 
-    // 3. Traer todos los exámenes involucrados (indexados por id)
-    const examIds = [...new Set(resultados.map(r => r.id_examen))];
-    const { data: examenes, error: eErr } = await supabase
-      .from('examenes')
+    // Talleres
+    const tallerIds = [...new Set(resultados.map(r => r.id_taller))];
+    const { data: talleres, error: tErr } = await supabase
+      .from('talleres')
       .select('id, titulo')
-      .in('id', examIds);
+      .in('id', tallerIds);
 
-    if (eErr) throw eErr;
+    if (tErr) throw tErr;
 
-    const examMap = {};
-    (examenes || []).forEach(e => { examMap[e.id] = e.titulo; });
+    const tallerMap = {};
+    (talleres || []).forEach(t => { tallerMap[t.id] = t.titulo; });
 
-    // 4. Combinar — misma forma que retornaba SQLite
     const combined = resultados.map(r => {
       const u = userMap[String(r.id_estudiante).trim()] || {};
       return {
@@ -115,26 +112,25 @@ router.get('/all', async (req, res) => {
         apellidos:  u.apellidos  || '',
         documento:  u.documento  || r.id_estudiante,
         programa:   u.programa   || '',
-        titulo:     examMap[r.id_examen] || '',
+        titulo:     tallerMap[r.id_taller] || '',
         puntuacion: r.puntuacion,
         respuestas: r.respuestas,
         fecha:      r.fecha,
-        id_examen:           r.id_examen,
-        motivo_modificacion: r.motivo_modificacion
+        id_taller:  r.id_taller
       };
     });
 
     res.json(combined);
   } catch (err) {
-    console.error('Error GET /results/all:', err.message);
+    console.error('Error GET /workshop-results/all:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/results/check-today?documento=...&idExamen=... — verificar si ya rindió hoy
+// GET /api/workshop-results/check-today?documento=&idTaller= — ¿ya entregó hoy?
 router.get('/check-today', async (req, res) => {
-  const { documento, idExamen } = req.query;
-  if (!documento || !idExamen) {
+  const { documento, idTaller } = req.query;
+  if (!documento || !idTaller) {
     return res.status(400).json({ error: 'Missing parameters' });
   }
   try {
@@ -144,53 +140,54 @@ router.get('/check-today', async (req, res) => {
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
     const { data, error } = await supabase
-      .from('resultados')
+      .from('resultados_taller')
       .select('id')
       .eq('id_estudiante', documento)
-      .eq('id_examen', Number(idExamen))
+      .eq('id_taller', Number(idTaller))
       .gte('fecha', today.toISOString())
       .lt('fecha', tomorrow.toISOString());
 
     if (error) throw error;
-    res.json({ hasExamToday: data.length > 0 });
+    res.json({ hasWorkshopToday: data.length > 0 });
   } catch (err) {
-    console.error('Error GET /results/check-today:', err.message);
+    console.error('Error GET /workshop-results/check-today:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/results/:id — eliminar resultado (para permitir reintento)
+// PUT /api/workshop-results/:id/grade — calificar o re-calificar
+router.put('/:id/grade', async (req, res) => {
+  const { puntuacion } = req.body;
+  if (puntuacion === undefined || puntuacion === null || isNaN(Number(puntuacion))) {
+    return res.status(400).json({ error: 'Puntuación inválida' });
+  }
+  const score = Math.min(5, Math.max(0, Number(puntuacion)));
+  try {
+    const { error } = await supabase
+      .from('resultados_taller')
+      .update({ puntuacion: score })
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true, puntuacion: score });
+  } catch (err) {
+    console.error('Error PUT /workshop-results/:id/grade:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/workshop-results/:id — eliminar entrega
 router.delete('/:id', async (req, res) => {
   try {
     const { error } = await supabase
-      .from('resultados')
+      .from('resultados_taller')
       .delete()
       .eq('id', req.params.id);
 
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {
-    console.error('Error DELETE /results/:id:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /api/results/:id — actualizar puntuación y motivo de modificación
-router.put('/:id', async (req, res) => {
-  const { puntuacion, motivo_modificacion } = req.body;
-  try {
-    const { error } = await supabase
-      .from('resultados')
-      .update({ 
-        puntuacion, 
-        motivo_modificacion 
-      })
-      .eq('id', req.params.id);
-
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error PUT /results/:id:', err.message);
+    console.error('Error DELETE /workshop-results/:id:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
