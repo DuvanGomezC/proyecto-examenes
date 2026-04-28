@@ -1633,7 +1633,39 @@ async function renderWorkshopResultsTab() {
 }
 
 // ─── WORKSHOP ENGINE (STUDENT) ────────────────────────────────────────────────
-let _workshopState = null;
+/**
+ * Manejo de borradores de taller en localStorage
+ */
+function getWorkshopDraftKey(documento, workshopId) {
+  return `inarfotec_ws_draft_${documento}_${workshopId}`;
+}
+
+function saveWorkshopDraft() {
+  if (!_workshopState) return;
+  try {
+    const key = getWorkshopDraftKey(_workshopState.user.documento, _workshopState.workshop.id);
+    const data = {
+      answers: _workshopState.answers,
+      current: _workshopState.current
+    };
+    localStorage.setItem(key, JSON.stringify(data));
+    
+    // Feedback visual sutil
+    const statusEl = document.getElementById('ws-autosave-status');
+    if (statusEl) {
+      statusEl.innerHTML = '<span style="color:#10b981;">✓ Autoguardado</span>';
+      statusEl.classList.remove('ws-status--saving');
+      void statusEl.offsetWidth; // Trigger reflow
+      statusEl.classList.add('ws-status--saving');
+    }
+  } catch (e) {
+    console.error('Error al guardar borrador:', e);
+  }
+}
+
+function clearWorkshopDraft(documento, workshopId) {
+  localStorage.removeItem(getWorkshopDraftKey(documento, workshopId));
+}
 
 async function renderWorkshopEngine() {
   if (!(await Auth.requireAuth('Estudiante'))) return;
@@ -1651,7 +1683,27 @@ async function renderWorkshopEngine() {
     return;
   }
 
-  _workshopState = { workshop, current: 0, answers: {}, user };
+  // Intentar cargar borrador
+  let savedAnswers = {};
+  let savedCurrent = 0;
+  try {
+    const draft = localStorage.getItem(getWorkshopDraftKey(user.documento, workshop.id));
+    if (draft) {
+      const parsed = JSON.parse(draft);
+      savedAnswers = parsed.answers || {};
+      savedCurrent = parsed.current || 0;
+      showToast('Borrador cargado automáticamente', 'success');
+    }
+  } catch (e) {
+    console.error('Error al cargar borrador:', e);
+  }
+
+  _workshopState = { 
+    workshop, 
+    current: savedCurrent, 
+    answers: savedAnswers, 
+    user 
+  };
   await renderWorkshopQuestion();
 }
 
@@ -1721,8 +1773,9 @@ async function renderWorkshopQuestion() {
             <span class="exam-meta">${escapeHtml(_workshopState.user.nombres)}</span>
           </div>
         </div>
-        <div class="exam-header__counter">
+        <div class="exam-header__counter" style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
           <span class="counter-badge" style="background:#7c3aed;">Pregunta ${current + 1} <em>de</em> ${total}</span>
+          <span id="ws-autosave-status" style="font-size:0.7rem; color:#6b7280; transition: opacity 0.3s ease; opacity:0.7;">✓ Autoguardado</span>
         </div>
       </header>
       <div class="exam-progress-bar">
@@ -1759,6 +1812,7 @@ async function renderWorkshopQuestion() {
       if (!_workshopState.answers[qid]) _workshopState.answers[qid] = {};
       if (!_workshopState.answers[qid][campo]) _workshopState.answers[qid][campo] = {};
       _workshopState.answers[qid][campo].texto = val;
+      saveWorkshopDraft();
       const counter   = document.getElementById(`wc-${campo}`);
       if (!counter) return;
       const isEjemplo = campo === 'ejemplo';
@@ -1801,6 +1855,7 @@ async function renderWorkshopQuestion() {
         counter.className = 'ws-char-counter ws-char-ok';
         counter.textContent = `${cnt} caracteres · 📷 Foto adjunta`;
       }
+      saveWorkshopDraft();
     }
 
     function removePhoto(qid) {
@@ -1820,6 +1875,7 @@ async function renderWorkshopQuestion() {
         counter.className = `ws-char-counter ${ok ? 'ws-char-ok' : 'ws-char-warn'}`;
         counter.textContent = `${cnt} caracteres`;
       }
+      saveWorkshopDraft();
     }
 
     function wireRemoveBtn(qid) {
@@ -1841,7 +1897,11 @@ async function renderWorkshopQuestion() {
   });
 
   document.getElementById('ws-prev-btn')?.addEventListener('click', async () => {
-    if (_workshopState.current > 0) { _workshopState.current--; await renderWorkshopQuestion(); }
+    if (_workshopState.current > 0) { 
+      _workshopState.current--; 
+      saveWorkshopDraft();
+      await renderWorkshopQuestion(); 
+    }
   });
 
   document.getElementById('ws-next-btn')?.addEventListener('click', async () => {
@@ -1868,6 +1928,7 @@ async function renderWorkshopQuestion() {
       await submitWorkshop();
     } else {
       _workshopState.current++;
+      saveWorkshopDraft();
       await renderWorkshopQuestion();
     }
   });
@@ -1877,6 +1938,7 @@ async function submitWorkshop() {
   const { workshop, answers, user } = _workshopState;
   try {
     await DB.saveWorkshopResult(user.documento, workshop.id, answers);
+    clearWorkshopDraft(user.documento, workshop.id);
   } catch(err) {
     showToast('Error al entregar el taller. Intenta de nuevo.', 'error');
     return;

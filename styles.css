@@ -756,3 +756,18 @@ code { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 2px 
   .workshop-field { padding: 12px 14px; }
   .workshop-field__header { flex-direction: column; align-items: flex-start; }
 }
+
+/* ─── Workshop Autosave Styles ─── */
+#ws-autosave-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ws-status--saving {
+  animation: ws-save-shimmer 1s ease-in-out;
+}
+@keyframes ws-save-shimmer {
+  0% { opacity: 0.5; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.05); color: #10b981; }
+  100% { opacity: 0.7; transform: scale(1); }
+}
