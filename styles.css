@@ -254,6 +254,72 @@ code { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 2px 
 }
 .hidden { display: none !important; }
 
+/* ─── Button Loading State ───────────────────────────────────────────────────
+   Sistema reutilizable de carga para cualquier botón.
+   withBtnLoading() agrega/quita estas clases automáticamente.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Estado de carga: el botón muestra un spinner inline */
+.btn--loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.82;
+  /* Reservar espacio para el spinner sin cambiar el tamaño del botón */
+  gap: 0;
+}
+
+/* Ocultar el contenido original del botón mientras carga */
+.btn--loading > *:not(.btn-inline-spinner) {
+  visibility: hidden;
+}
+
+/* Spinner centrado absolutamente sobre el botón */
+.btn-inline-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Anillo del spinner — se adapta al color del botón */
+.btn-inline-spinner::after {
+  content: '';
+  display: block;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: white;
+  animation: spin 0.65s linear infinite;
+}
+
+/* Para botones outline/ghost el spinner usa el color de la marca */
+.btn--outline.btn--loading .btn-inline-spinner::after,
+.btn--ghost.btn--loading .btn-inline-spinner::after {
+  border-color: rgba(26, 60, 110, 0.2);
+  border-top-color: var(--brand-primary);
+}
+
+/* Tamaño reducido para btn--sm */
+.btn--sm.btn--loading .btn-inline-spinner::after {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+
+/* Botones con color personalizado (talleres #7c3aed, modificar #f59e0b) */
+.btn--loading[style*="7c3aed"] .btn-inline-spinner::after {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+}
+.btn--loading[style*="f59e0b"] .btn-inline-spinner::after {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+}
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /* ─── Dashboard Layout ─── */
 .dashboard { display: flex; flex-direction: column; min-height: 100vh; }
 

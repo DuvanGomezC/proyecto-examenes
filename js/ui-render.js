@@ -327,11 +327,15 @@ async function renderStudentDashboard() {
   });
 
   document.getElementById('logout-btn')?.addEventListener('click', () => Auth.logout());
-  document.getElementById('start-exam-btn')?.addEventListener('click', async () => {
-    window.location.hash = '#exam-engine';
+  document.getElementById('start-exam-btn')?.addEventListener('click', async (e) => {
+    await withBtnLoading(e.currentTarget, async () => {
+      window.location.hash = '#exam-engine';
+    });
   });
-  document.getElementById('start-workshop-btn')?.addEventListener('click', async () => {
-    window.location.hash = '#workshop-engine';
+  document.getElementById('start-workshop-btn')?.addEventListener('click', async (e) => {
+    await withBtnLoading(e.currentTarget, async () => {
+      window.location.hash = '#workshop-engine';
+    });
   });
 }
 
@@ -354,6 +358,51 @@ async function withSubmitGuard(guard, fn) {
     // Solo libera el guard si la función terminó con error recuperable.
     // En flujos de éxito el modal/logout toma el control, así que
     // dejamos el flag activo para bloquear cualquier reintento posterior.
+  }
+}
+
+/**
+ * withBtnLoading — Sistema centralizado de feedback visual para botones.
+ *
+ * Muestra un spinner inline sobre el botón mientras se ejecuta una operación
+ * async, luego restaura el estado original. Funciona con cualquier botón sin
+ * necesidad de modificar su HTML.
+ *
+ * Características:
+ *  - Inyecta/remueve el spinner dinámicamente (no requiere markup especial)
+ *  - Deshabilita el botón durante la operación (previene doble clic)
+ *  - Restaura el estado aunque la función lance un error
+ *  - Compatible con btn--primary, btn--outline, btn--ghost, btn--sm y colores custom
+ *
+ * @param {HTMLElement} btn   - El elemento botón que dispara la acción
+ * @param {Function}    fn    - Función async a ejecutar
+ * @returns {Promise<*>}      - Resultado de fn()
+ *
+ * @example
+ *   btn.addEventListener('click', () => withBtnLoading(btn, async () => {
+ *     await DB.deleteUser(id);
+ *   }));
+ */
+async function withBtnLoading(btn, fn) {
+  if (!btn || btn.disabled) return;
+
+  // Inyectar spinner si no existe ya
+  if (!btn.querySelector('.btn-inline-spinner')) {
+    const spinner = document.createElement('span');
+    spinner.className = 'btn-inline-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    btn.appendChild(spinner);
+  }
+
+  btn.classList.add('btn--loading');
+  btn.disabled = true;
+
+  try {
+    return await fn();
+  } finally {
+    // Restaurar siempre, incluso si fn() lanzó un error
+    btn.classList.remove('btn--loading');
+    btn.disabled = false;
   }
 }
 
@@ -725,25 +774,33 @@ async function renderUsersTab() {
     </div>
   `;
 
-  document.getElementById('create-user-btn').addEventListener('click', async () => await openUserModal());
+  document.getElementById('create-user-btn').addEventListener('click', async (e) => {
+    await withBtnLoading(e.currentTarget, async () => await openUserModal());
+  });
   document.querySelectorAll('[data-action="edit"]').forEach(btn => {
-    btn.addEventListener('click', async () => await openUserModal(parseInt(btn.dataset.id)));
+    btn.addEventListener('click', async () => {
+      await withBtnLoading(btn, async () => await openUserModal(parseInt(btn.dataset.id)));
+    });
   });
   document.querySelectorAll('[data-action="toggle"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const newStatus = btn.dataset.estado === 'Activo' ? 'Inactivo' : 'Activo';
-      await DB.toggleUserStatus(parseInt(btn.dataset.id), newStatus);
-      showToast(`Usuario ${newStatus === 'Activo' ? 'activado' : 'inactivado'} correctamente.`);
-      await renderUsersTab();
+      await withBtnLoading(btn, async () => {
+        const newStatus = btn.dataset.estado === 'Activo' ? 'Inactivo' : 'Activo';
+        await DB.toggleUserStatus(parseInt(btn.dataset.id), newStatus);
+        showToast(`Usuario ${newStatus === 'Activo' ? 'activado' : 'inactivado'} correctamente.`);
+        await renderUsersTab();
+      });
     });
   });
   document.querySelectorAll('[data-action="delete"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (await window.showConfirm(`¿Eliminar a ${btn.dataset.nombre}? Esta acción no se puede deshacer.`)) {
-        await DB.deleteUser(parseInt(btn.dataset.id));
-        showToast('Usuario eliminado.', 'info');
-        await renderUsersTab();
-      }
+      await withBtnLoading(btn, async () => {
+        if (await window.showConfirm(`¿Eliminar a ${btn.dataset.nombre}? Esta acción no se puede deshacer.`)) {
+          await DB.deleteUser(parseInt(btn.dataset.id));
+          showToast('Usuario eliminado.', 'info');
+          await renderUsersTab();
+        }
+      });
     });
   });
 }
@@ -837,20 +894,23 @@ async function openUserModal(userId = null) {
         errEl.textContent = 'La contraseña es obligatoria para nuevos usuarios.'; return;
       }
 
-      try {
-        if (userId) {
-          await DB.updateUser(userId, data);
-          showToast('Usuario actualizado correctamente.');
-        } else {
-          await DB.createUser(data);
-          showToast('Usuario creado correctamente.');
+      const submitBtn = e.target.querySelector('[type="submit"]');
+      await withBtnLoading(submitBtn, async () => {
+        try {
+          if (userId) {
+            await DB.updateUser(userId, data);
+            showToast('Usuario actualizado correctamente.');
+          } else {
+            await DB.createUser(data);
+            showToast('Usuario creado correctamente.');
+          }
+          closeModal();
+          window._activeTab = 'users';
+          await renderUsersTab();
+        } catch(err) {
+          errEl.textContent = 'Error: El documento ya existe.';
         }
-        closeModal();
-        window._activeTab = 'users';
-        await renderUsersTab();
-      } catch(err) {
-        errEl.textContent = 'Error: El documento ya existe.';
-      }
+      });
     });
   });
 }
@@ -895,28 +955,36 @@ async function renderExamsTab() {
     </div>
   `;
 
-  document.getElementById('create-exam-btn').addEventListener('click', async () => await openExamModal());
+  document.getElementById('create-exam-btn').addEventListener('click', async (e) => {
+    await withBtnLoading(e.currentTarget, async () => await openExamModal());
+  });
   document.querySelectorAll('[data-action="enable"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await DB.enableExam(parseInt(btn.dataset.id));
-      showToast('Examen habilitado. Todos los demás fueron deshabilitados.');
-      await renderExamsTab();
+      await withBtnLoading(btn, async () => {
+        await DB.enableExam(parseInt(btn.dataset.id));
+        showToast('Examen habilitado. Todos los demás fueron deshabilitados.');
+        await renderExamsTab();
+      });
     });
   });
   document.querySelectorAll('[data-action="disable"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await DB.disableExam(parseInt(btn.dataset.id));
-      showToast('Examen deshabilitado.', 'info');
-      await renderExamsTab();
+      await withBtnLoading(btn, async () => {
+        await DB.disableExam(parseInt(btn.dataset.id));
+        showToast('Examen deshabilitado.', 'info');
+        await renderExamsTab();
+      });
     });
   });
   document.querySelectorAll('[data-action="delete-exam"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (await window.showConfirm(`¿Eliminar el examen "${btn.dataset.titulo}"?`)) {
-        await DB.deleteExam(parseInt(btn.dataset.id));
-        showToast('Examen eliminado.', 'info');
-        await renderExamsTab();
-      }
+      await withBtnLoading(btn, async () => {
+        if (await window.showConfirm(`¿Eliminar el examen "${btn.dataset.titulo}"?`)) {
+          await DB.deleteExam(parseInt(btn.dataset.id));
+          showToast('Examen eliminado.', 'info');
+          await renderExamsTab();
+        }
+      });
     });
   });
 }
@@ -1028,10 +1096,13 @@ async function openExamModal() {
         preguntas.push(pregunta);
       }
 
-      await DB.createExam(titulo, preguntas);
-      showToast('Examen creado correctamente. Puedes habilitarlo en la tabla.');
-      closeModal();
-      await renderExamsTab();
+      const submitBtn = e.target.querySelector('[type="submit"]');
+      await withBtnLoading(submitBtn, async () => {
+        await DB.createExam(titulo, preguntas);
+        showToast('Examen creado correctamente. Puedes habilitarlo en la tabla.');
+        closeModal();
+        await renderExamsTab();
+      });
     });
   });
 }
@@ -1151,34 +1222,42 @@ async function renderResultsTab() {
       </div>
     `;
 
-    document.getElementById('back-to-exams-btn')?.addEventListener('click', async () => {
-      window._activeExamResult = null;
-      await renderResultsTab();
+    document.getElementById('back-to-exams-btn')?.addEventListener('click', async (e) => {
+      await withBtnLoading(e.currentTarget, async () => {
+        window._activeExamResult = null;
+        await renderResultsTab();
+      });
     });
 
-    document.getElementById('refresh-results-btn')?.addEventListener('click', async () => await renderResultsTab());
+    document.getElementById('refresh-results-btn')?.addEventListener('click', async (e) => {
+      await withBtnLoading(e.currentTarget, async () => await renderResultsTab());
+    });
 
     document.querySelectorAll('[data-action="pdf-result"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const resultado = (await DB.getAllResults()).find(r => String(r.id) === btn.dataset.rid);
-        const student = await DB.getUserByDocumento(btn.dataset.doc);
-        const exam = await DB.getExamById(parseInt(btn.dataset.examid));
-        if (resultado && student && exam) {
-          if (typeof resultado.respuestas === 'string') resultado.respuestas = JSON.parse(resultado.respuestas);
-          await PDFGen.generateResultPDF(resultado, student, exam);
-        } else {
-          showToast('No se pudo generar el PDF.', 'error');
-        }
+        await withBtnLoading(btn, async () => {
+          const resultado = (await DB.getAllResults()).find(r => String(r.id) === btn.dataset.rid);
+          const student = await DB.getUserByDocumento(btn.dataset.doc);
+          const exam = await DB.getExamById(parseInt(btn.dataset.examid));
+          if (resultado && student && exam) {
+            if (typeof resultado.respuestas === 'string') resultado.respuestas = JSON.parse(resultado.respuestas);
+            await PDFGen.generateResultPDF(resultado, student, exam);
+          } else {
+            showToast('No se pudo generar el PDF.', 'error');
+          }
+        });
       });
     });
 
     document.querySelectorAll('[data-action="delete-result"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (await window.showConfirm(`¿Eliminar el resultado de ${btn.dataset.estudiante}? Esto le permitirá presentar el examen nuevamente.`)) {
-          await DB.deleteResult(parseInt(btn.dataset.rid));
-          showToast('Resultado eliminado correctamente.', 'info');
-          await renderResultsTab();
-        }
+        await withBtnLoading(btn, async () => {
+          if (await window.showConfirm(`¿Eliminar el resultado de ${btn.dataset.estudiante}? Esto le permitirá presentar el examen nuevamente.`)) {
+            await DB.deleteResult(parseInt(btn.dataset.rid));
+            showToast('Resultado eliminado correctamente.', 'info');
+            await renderResultsTab();
+          }
+        });
       });
     });
 
@@ -1247,14 +1326,17 @@ async function renderResultsTab() {
               return;
             }
             
-            try {
-              await DB.updateExamResult(parseInt(rid), scoreVal, reasonVal);
-              showToast('Nota modificada correctamente.');
-              closeModal();
-              await renderResultsTab();
-            } catch (err) {
-              errEl.textContent = 'Error al modificar la nota.';
-            }
+            const modBtn = document.getElementById('mod-submit-btn');
+            await withBtnLoading(modBtn, async () => {
+              try {
+                await DB.updateExamResult(parseInt(rid), scoreVal, reasonVal);
+                showToast('Nota modificada correctamente.');
+                closeModal();
+                await renderResultsTab();
+              } catch (err) {
+                errEl.textContent = 'Error al modificar la nota.';
+              }
+            });
           });
         });
       });
@@ -1308,20 +1390,26 @@ async function renderResultsTab() {
       </div>
     `;
 
-    document.getElementById('refresh-results-btn')?.addEventListener('click', async () => await renderResultsTab());
+    document.getElementById('refresh-results-btn')?.addEventListener('click', async (e) => {
+      await withBtnLoading(e.currentTarget, async () => await renderResultsTab());
+    });
     
     document.querySelectorAll('[data-action="view-exam"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        window._activeExamResult = parseInt(btn.dataset.examid);
-        await renderResultsTab();
+        await withBtnLoading(btn, async () => {
+          window._activeExamResult = parseInt(btn.dataset.examid);
+          await renderResultsTab();
+        });
       });
     });
 
     document.querySelectorAll('[data-action="pdf-clean"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const exam = await DB.getExamById(parseInt(btn.dataset.examid));
-        if (exam) await PDFGen.generateCleanExamPDF(exam);
-        else showToast('Examen no encontrado.', 'error');
+        await withBtnLoading(btn, async () => {
+          const exam = await DB.getExamById(parseInt(btn.dataset.examid));
+          if (exam) await PDFGen.generateCleanExamPDF(exam);
+          else showToast('Examen no encontrado.', 'error');
+        });
       });
     });
   }
@@ -1380,28 +1468,36 @@ async function renderWorkshopsTab() {
     </div>
   `;
 
-  document.getElementById('create-workshop-btn').addEventListener('click', async () => await openWorkshopModal());
+  document.getElementById('create-workshop-btn').addEventListener('click', async (e) => {
+    await withBtnLoading(e.currentTarget, async () => await openWorkshopModal());
+  });
   document.querySelectorAll('[data-action="enable-ws"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await DB.enableWorkshop(parseInt(btn.dataset.id));
-      showToast('Taller habilitado. Los demás fueron deshabilitados.');
-      await renderWorkshopsTab();
+      await withBtnLoading(btn, async () => {
+        await DB.enableWorkshop(parseInt(btn.dataset.id));
+        showToast('Taller habilitado. Los demás fueron deshabilitados.');
+        await renderWorkshopsTab();
+      });
     });
   });
   document.querySelectorAll('[data-action="disable-ws"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await DB.disableWorkshop(parseInt(btn.dataset.id));
-      showToast('Taller deshabilitado.', 'info');
-      await renderWorkshopsTab();
+      await withBtnLoading(btn, async () => {
+        await DB.disableWorkshop(parseInt(btn.dataset.id));
+        showToast('Taller deshabilitado.', 'info');
+        await renderWorkshopsTab();
+      });
     });
   });
   document.querySelectorAll('[data-action="delete-ws"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (await window.showConfirm(`¿Eliminar el taller "${btn.dataset.titulo}"?`)) {
-        await DB.deleteWorkshop(parseInt(btn.dataset.id));
-        showToast('Taller eliminado.', 'info');
-        await renderWorkshopsTab();
-      }
+      await withBtnLoading(btn, async () => {
+        if (await window.showConfirm(`¿Eliminar el taller "${btn.dataset.titulo}"?`)) {
+          await DB.deleteWorkshop(parseInt(btn.dataset.id));
+          showToast('Taller eliminado.', 'info');
+          await renderWorkshopsTab();
+        }
+      });
     });
   });
 }
@@ -1500,14 +1596,18 @@ async function openWorkshopModal() {
         if (campos.length === 0) { errEl.textContent = `Activa al menos un campo en la pregunta ${i + 1}.`; return; }
         preguntas.push({ id: `wq${i}`, texto, campos });
       }
-      try {
-        await DB.createWorkshop(titulo, preguntas);
-        showToast('Taller creado. Puedes habilitarlo en la tabla.');
-        closeModal();
-        await renderWorkshopsTab();
-      } catch (err) {
-        errEl.textContent = 'Error al guardar el taller.';
-      }
+
+      const submitBtn = e.target.querySelector('[type="submit"]');
+      await withBtnLoading(submitBtn, async () => {
+        try {
+          await DB.createWorkshop(titulo, preguntas);
+          showToast('Taller creado. Puedes habilitarlo en la tabla.');
+          closeModal();
+          await renderWorkshopsTab();
+        } catch (err) {
+          errEl.textContent = 'Error al guardar el taller.';
+        }
+      });
     });
   });
 }
@@ -1590,15 +1690,20 @@ async function renderWorkshopResultsTab() {
       </div>
     `;
 
-    document.getElementById('back-to-ws-list-btn')?.addEventListener('click', async () => {
-      window._activeWorkshopResult = null;
-      await renderWorkshopResultsTab();
+    document.getElementById('back-to-ws-list-btn')?.addEventListener('click', async (e) => {
+      await withBtnLoading(e.currentTarget, async () => {
+        window._activeWorkshopResult = null;
+        await renderWorkshopResultsTab();
+      });
     });
-    document.getElementById('refresh-ws-results-btn')?.addEventListener('click', async () => await renderWorkshopResultsTab());
+    document.getElementById('refresh-ws-results-btn')?.addEventListener('click', async (e) => {
+      await withBtnLoading(e.currentTarget, async () => await renderWorkshopResultsTab());
+    });
 
     // View responses modal
     document.querySelectorAll('[data-action="view-ws-resp"]').forEach(btn => {
       btn.addEventListener('click', async () => {
+        await withBtnLoading(btn, async () => {
         const rid = btn.dataset.rid;
         const result = results.find(r => String(r.id) === rid);
         if (!result) { showToast('No se encontró la entrega.', 'error'); return; }
@@ -1624,12 +1729,14 @@ async function renderWorkshopResultsTab() {
           document.getElementById('ws-resp-close')?.addEventListener('click', closeModal);
           document.getElementById('ws-resp-close-2')?.addEventListener('click', closeModal);
         });
+        }); // cierre withBtnLoading
       });
     });
 
     // Grade modal
     document.querySelectorAll('[data-action="grade-ws"]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
+        await withBtnLoading(btn, async () => {
         const rid = btn.dataset.rid;
         const nombres = btn.dataset.nombres;
         const currentScore = btn.dataset.score;
@@ -1658,35 +1765,41 @@ async function renderWorkshopResultsTab() {
             const errEl = document.getElementById('grade-error');
             const val = parseFloat(document.getElementById('grade-input').value);
             if (isNaN(val) || val < 0 || val > 5) { errEl.textContent = 'Ingresa una calificación válida entre 0.0 y 5.0.'; return; }
-            try {
-              await DB.gradeWorkshopResult(parseInt(rid), val);
-              showToast('Calificación guardada correctamente.');
-              closeModal();
-              await renderWorkshopResultsTab();
-            } catch(err) {
-              errEl.textContent = 'Error al guardar la calificación.';
-            }
+            const gradeBtn = document.getElementById('grade-submit-btn');
+            await withBtnLoading(gradeBtn, async () => {
+              try {
+                await DB.gradeWorkshopResult(parseInt(rid), val);
+                showToast('Calificación guardada correctamente.');
+                closeModal();
+                await renderWorkshopResultsTab();
+              } catch(err) {
+                errEl.textContent = 'Error al guardar la calificación.';
+              }
+            });
           });
         });
+        }); // cierre withBtnLoading grade-ws
       });
     });
 
     // Delete workshop result (give student another attempt)
     document.querySelectorAll('[data-action="delete-ws-result"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const rid     = btn.dataset.rid;
-        const nombres = btn.dataset.nombres;
-        const ok = await window.showConfirm(
-          `¿Eliminar la entrega de "${nombres}"?\nEl estudiante podrá volver a realizar el taller.`
-        );
-        if (!ok) return;
-        try {
-          await DB.deleteWorkshopResult(parseInt(rid));
-          showToast(`Entrega de ${nombres} eliminada. El estudiante puede volver a entregar.`, 'info');
-          await renderWorkshopResultsTab();
-        } catch (err) {
-          showToast('Error al eliminar la entrega.', 'error');
-        }
+        await withBtnLoading(btn, async () => {
+          const rid     = btn.dataset.rid;
+          const nombres = btn.dataset.nombres;
+          const ok = await window.showConfirm(
+            `¿Eliminar la entrega de "${nombres}"?\nEl estudiante podrá volver a realizar el taller.`
+          );
+          if (!ok) return;
+          try {
+            await DB.deleteWorkshopResult(parseInt(rid));
+            showToast(`Entrega de ${nombres} eliminada. El estudiante puede volver a entregar.`, 'info');
+            await renderWorkshopResultsTab();
+          } catch (err) {
+            showToast('Error al eliminar la entrega.', 'error');
+          }
+        });
       });
     });
 
@@ -1730,11 +1843,15 @@ async function renderWorkshopResultsTab() {
       </div>
     `;
 
-    document.getElementById('refresh-ws-results-btn')?.addEventListener('click', async () => await renderWorkshopResultsTab());
+    document.getElementById('refresh-ws-results-btn')?.addEventListener('click', async (e) => {
+      await withBtnLoading(e.currentTarget, async () => await renderWorkshopResultsTab());
+    });
     document.querySelectorAll('[data-action="view-ws-results"]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        window._activeWorkshopResult = parseInt(btn.dataset.wsid);
-        await renderWorkshopResultsTab();
+        await withBtnLoading(btn, async () => {
+          window._activeWorkshopResult = parseInt(btn.dataset.wsid);
+          await renderWorkshopResultsTab();
+        });
       });
     });
   }
