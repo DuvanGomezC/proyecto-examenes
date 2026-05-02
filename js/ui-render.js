@@ -338,6 +338,28 @@ async function renderStudentDashboard() {
 // ─── EXAM ENGINE ──────────────────────────────────────────────────────────────
 let _examState = null;
 
+/**
+ * Guard reutilizable contra envíos duplicados.
+ * Recibe un objeto de estado { flag } y una función async.
+ * Si ya hay un envío en curso, lo ignora silenciosamente.
+ * @param {{ submitting: boolean }} guard  - Objeto compartido con el flag de estado
+ * @param {Function}               fn     - Función async a ejecutar una sola vez
+ */
+async function withSubmitGuard(guard, fn) {
+  if (guard.submitting) return;
+  guard.submitting = true;
+  try {
+    await fn();
+  } finally {
+    // Solo libera el guard si la función terminó con error recuperable.
+    // En flujos de éxito el modal/logout toma el control, así que
+    // dejamos el flag activo para bloquear cualquier reintento posterior.
+  }
+}
+
+// Flag de envío para exámenes (se resetea al iniciar un nuevo examen)
+const _examSubmitGuard = { submitting: false };
+
 async function renderExamEngine() {
   if (!(await Auth.requireAuth('Estudiante'))) return;
   const user = Auth.getCurrentUser();
@@ -365,7 +387,10 @@ async function renderExamEngine() {
     user,
   };
 
-  window.AntiFraud?.start(() => submitExam());
+  // Resetear el guard al iniciar un nuevo examen
+  _examSubmitGuard.submitting = false;
+
+  window.AntiFraud?.start(() => withSubmitGuard(_examSubmitGuard, _doSubmitExam));
 
   await renderExamQuestion();
 }
@@ -445,9 +470,12 @@ async function renderExamQuestion() {
     if (_examState.current > 0) { _examState.current--; await renderExamQuestion(); }
   });
 
-  document.getElementById('next-btn')?.addEventListener('click', async () => {
+  document.getElementById('next-btn')?.addEventListener('click', async (e) => {
     if (isLast) {
-      submitExam();
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      await withSubmitGuard(_examSubmitGuard, _doSubmitExam);
     } else {
       _examState.current++;
       await renderExamQuestion();
@@ -455,7 +483,7 @@ async function renderExamQuestion() {
   });
 }
 
-async function submitExam() {
+async function _doSubmitExam() {
   const { exam, answers, user } = _examState;
   let correct = 0;
   exam.preguntas.forEach(q => {
@@ -465,7 +493,17 @@ async function submitExam() {
 
   window.AntiFraud?.stop();
 
-  await DB.saveResult(user.documento, exam.id, score, answers);
+  try {
+    await DB.saveResult(user.documento, exam.id, score, answers);
+  } catch (err) {
+    // Si falla el envío, liberar el guard para permitir reintento manual
+    _examSubmitGuard.submitting = false;
+    // Rehabilitar el botón si sigue en pantalla
+    const btn = document.getElementById('next-btn');
+    if (btn) { btn.disabled = false; btn.textContent = 'Finalizar ✓'; }
+    showToast('Error al enviar el examen. Intenta de nuevo.', 'error');
+    return;
+  }
 
   // Show result modal then logout
   const passed = score > 3.0;
@@ -1636,6 +1674,11 @@ async function renderWorkshopResultsTab() {
 /**
  * Manejo de borradores de taller en localStorage
  */
+
+// Flag de envío para talleres (se resetea al iniciar un nuevo taller)
+const _workshopSubmitGuard = { submitting: false };
+
+let _workshopState = null;
 function getWorkshopDraftKey(documento, workshopId) {
   return `inarfotec_ws_draft_${documento}_${workshopId}`;
 }
@@ -1704,6 +1747,10 @@ async function renderWorkshopEngine() {
     answers: savedAnswers, 
     user 
   };
+
+  // Resetear el guard al iniciar un nuevo taller
+  _workshopSubmitGuard.submitting = false;
+
   await renderWorkshopQuestion();
 }
 
@@ -1925,7 +1972,9 @@ async function renderWorkshopQuestion() {
       }
     }
     if (isLast) {
-      await submitWorkshop();
+      const btn = document.getElementById('ws-next-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+      await withSubmitGuard(_workshopSubmitGuard, _doSubmitWorkshop);
     } else {
       _workshopState.current++;
       saveWorkshopDraft();
@@ -1934,12 +1983,16 @@ async function renderWorkshopQuestion() {
   });
 }
 
-async function submitWorkshop() {
+async function _doSubmitWorkshop() {
   const { workshop, answers, user } = _workshopState;
   try {
     await DB.saveWorkshopResult(user.documento, workshop.id, answers);
     clearWorkshopDraft(user.documento, workshop.id);
   } catch(err) {
+    // Si falla el envío, liberar el guard para permitir reintento manual
+    _workshopSubmitGuard.submitting = false;
+    const btn = document.getElementById('ws-next-btn');
+    if (btn) { btn.disabled = false; btn.textContent = 'Entregar Taller ✓'; }
     showToast('Error al entregar el taller. Intenta de nuevo.', 'error');
     return;
   }

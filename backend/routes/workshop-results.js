@@ -7,8 +7,39 @@ const { supabase } = require('../db');
 // POST /api/workshop-results — guardar entrega del estudiante (sin puntuación aún)
 router.post('/', async (req, res) => {
   const { id_estudiante, id_taller, respuestas } = req.body;
-  const fecha = new Date().toISOString();
+
+  // Validación básica de parámetros
+  if (!id_estudiante || id_taller === undefined) {
+    return res.status(400).json({ error: 'Parámetros incompletos' });
+  }
+
   try {
+    // ── Capa de idempotencia: verificar si ya existe una entrega hoy ──────────
+    // Última línea de defensa contra envíos duplicados concurrentes.
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+    const { data: existing, error: checkErr } = await supabase
+      .from('resultados_taller')
+      .select('id')
+      .eq('id_estudiante', id_estudiante)
+      .eq('id_taller', Number(id_taller))
+      .gte('fecha', today.toISOString())
+      .lt('fecha', tomorrow.toISOString())
+      .limit(1);
+
+    if (checkErr) throw checkErr;
+
+    if (existing && existing.length > 0) {
+      // Ya existe una entrega para hoy — responder con éxito sin duplicar
+      console.warn(`[workshop-results] Envío duplicado bloqueado: estudiante=${id_estudiante}, taller=${id_taller}`);
+      return res.json({ success: true, duplicate: true });
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const fecha = new Date().toISOString();
     const { error } = await supabase
       .from('resultados_taller')
       .insert({
@@ -20,7 +51,7 @@ router.post('/', async (req, res) => {
       });
 
     if (error) throw error;
-    res.json({ success: true });
+    res.json({ success: true, duplicate: false });
   } catch (err) {
     console.error('Error POST /workshop-results:', err.message);
     res.status(500).json({ error: err.message });
