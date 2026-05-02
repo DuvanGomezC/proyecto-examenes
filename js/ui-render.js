@@ -594,18 +594,85 @@ async function renderInstructorDashboard() {
       window._activeTab = btn.dataset.tab;
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'));
       btn.classList.add('tab-btn--active');
-      renderTabContent(btn.dataset.tab);
+      await renderTabContent(btn.dataset.tab);
     });
   });
 
   await renderTabContent(activeTab);
 }
 
+// ─── Skeleton Loader ──────────────────────────────────────────────────────────
+/**
+ * Muestra un skeleton de carga inmediatamente en #tab-content.
+ * Reutilizable para cualquier tab. Tipos disponibles:
+ *   'table'  → tabla con N filas (por defecto 5)
+ *   'cards'  → cuadrícula de tarjetas de resumen
+ *
+ * @param {'table'|'cards'} type     - Variante visual del skeleton
+ * @param {number}          [rows=5] - Número de filas (solo para 'table')
+ */
+function showTabSkeleton(type, rows) {
+  type = type || 'table';
+  rows = rows || 5;
+  const content = document.getElementById('tab-content');
+  if (!content) return;
+
+  const skRow = function() {
+    return '<div class="tab-skeleton__row">' +
+      '<div class="sk-block tab-skeleton__cell tab-skeleton__cell--sm"></div>' +
+      '<div class="sk-block tab-skeleton__cell tab-skeleton__cell--lg"></div>' +
+      '<div class="sk-block tab-skeleton__cell tab-skeleton__cell--md"></div>' +
+      '<div class="sk-block tab-skeleton__cell tab-skeleton__cell--pill"></div>' +
+      '<div class="sk-block tab-skeleton__cell tab-skeleton__cell--md"></div>' +
+      '<div class="sk-block tab-skeleton__cell tab-skeleton__cell--btn"></div>' +
+    '</div>';
+  };
+
+  const skCard = function() {
+    return '<div class="tab-skeleton__card-item">' +
+      '<div class="sk-block"></div>' +
+      '<div class="sk-block"></div>' +
+      '<div class="sk-block"></div>' +
+    '</div>';
+  };
+
+  var bodyHtml;
+  if (type === 'cards') {
+    var cards = '';
+    for (var c = 0; c < 4; c++) cards += skCard();
+    bodyHtml = '<div class="tab-skeleton__cards">' + cards + '</div>';
+  } else {
+    var tableRows = '';
+    for (var r = 0; r < rows; r++) tableRows += skRow();
+    bodyHtml =
+      '<div class="tab-skeleton__thead">' +
+        '<div class="sk-block tab-skeleton__th"></div>' +
+        '<div class="sk-block tab-skeleton__th"></div>' +
+        '<div class="sk-block tab-skeleton__th"></div>' +
+        '<div class="sk-block tab-skeleton__th"></div>' +
+        '<div class="sk-block tab-skeleton__th"></div>' +
+      '</div>' + tableRows;
+  }
+
+  content.innerHTML =
+    '<div class="tab-skeleton" aria-busy="true" aria-label="Cargando...">' +
+      '<div class="tab-skeleton__header">' +
+        '<div class="sk-block tab-skeleton__title"></div>' +
+        '<div class="sk-block tab-skeleton__btn"></div>' +
+      '</div>' +
+      '<div class="tab-skeleton__card">' + bodyHtml + '</div>' +
+    '</div>';
+}
+
 async function renderTabContent(tab) {
-  if (tab === 'users') await renderUsersTab();
-  else if (tab === 'exams') await renderExamsTab();
-  else if (tab === 'results') await renderResultsTab();
-  else if (tab === 'workshops') await renderWorkshopsTab();
+  // Mostrar skeleton inmediatamente — sin esperar la red
+  var skeletonType = (tab === 'results' || tab === 'workshop-results') ? 'cards' : 'table';
+  showTabSkeleton(skeletonType);
+
+  if (tab === 'users')                 await renderUsersTab();
+  else if (tab === 'exams')            await renderExamsTab();
+  else if (tab === 'results')          await renderResultsTab();
+  else if (tab === 'workshops')        await renderWorkshopsTab();
   else if (tab === 'workshop-results') await renderWorkshopResultsTab();
 }
 
@@ -1005,8 +1072,11 @@ function renderMultipleOptions(idx, q) {
 
 // ─── RESULTS TAB ──────────────────────────────────────────────────────────────
 async function renderResultsTab() {
-  const results = await DB.getAllResults();
-  const exams = await DB.getAllExams();
+  // Cargar resultados y exámenes en paralelo — elimina la espera doble
+  const [results, exams] = await Promise.all([
+    DB.getAllResults(),
+    DB.getAllExams()
+  ]);
   
   // Group results by exam ID
   const grouped = {};

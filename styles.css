@@ -771,3 +771,114 @@ code { font-family: 'Courier New', monospace; background: #f1f5f9; padding: 2px 
   50% { opacity: 1; transform: scale(1.05); color: #10b981; }
   100% { opacity: 0.7; transform: scale(1); }
 }
+
+/* ─── Tab Skeleton Loader ─────────────────────────────────────────────────────
+   Sistema de skeleton reutilizable para cualquier tab del panel de instructor.
+   Uso: showTabSkeleton(type) donde type = 'table' | 'cards' | 'results'
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Animación shimmer base */
+@keyframes skeletonShimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+
+.sk-block {
+  background: linear-gradient(
+    90deg,
+    #e8edf3 25%,
+    #f4f7fb 50%,
+    #e8edf3 75%
+  );
+  background-size: 600px 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Contenedor del skeleton de tab */
+.tab-skeleton {
+  padding: 0;
+}
+
+/* Fila de encabezado (título + botón) */
+.tab-skeleton__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.tab-skeleton__title  { height: 28px; width: 220px; }
+.tab-skeleton__btn    { height: 36px; width: 130px; border-radius: 8px; }
+
+/* Tarjeta contenedora */
+.tab-skeleton__card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Cabecera de tabla skeleton */
+.tab-skeleton__thead {
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 2px solid var(--border-color);
+  background: #f8fafc;
+}
+.tab-skeleton__th {
+  height: 14px;
+  border-radius: 4px;
+  flex: 1;
+}
+.tab-skeleton__th:first-child { flex: 0 0 80px; }
+.tab-skeleton__th:last-child  { flex: 0 0 100px; }
+
+/* Filas de tabla skeleton */
+.tab-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+.tab-skeleton__row:last-child { border-bottom: none; }
+
+.tab-skeleton__cell {
+  height: 16px;
+  border-radius: 4px;
+  flex: 1;
+}
+.tab-skeleton__cell--sm   { flex: 0 0 70px;  }
+.tab-skeleton__cell--md   { flex: 0 0 120px; }
+.tab-skeleton__cell--lg   { flex: 0 0 180px; }
+.tab-skeleton__cell--pill { height: 22px; border-radius: 99px; flex: 0 0 80px; }
+.tab-skeleton__cell--btn  { height: 30px; border-radius: 8px; flex: 0 0 90px; }
+
+/* Variante: tarjetas de resumen (para resultados agrupados) */
+.tab-skeleton__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.tab-skeleton__card-item {
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tab-skeleton__card-item .sk-block { height: 16px; border-radius: 4px; }
+.tab-skeleton__card-item .sk-block:first-child { width: 70%; }
+.tab-skeleton__card-item .sk-block:nth-child(2) { width: 45%; }
+.tab-skeleton__card-item .sk-block:last-child   { width: 55%; height: 30px; border-radius: 8px; }
+
+@media (max-width: 768px) {
+  .tab-skeleton__header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .tab-skeleton__title  { width: 160px; }
+  .tab-skeleton__cards  { grid-template-columns: 1fr; }
+}
