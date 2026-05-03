@@ -85,6 +85,29 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/talleres/:id — editar título y preguntas de un taller
+router.put('/:id', async (req, res) => {
+  const { titulo, preguntas } = req.body;
+  if (!titulo || !Array.isArray(preguntas) || preguntas.length === 0) {
+    return res.status(400).json({ error: 'Título y preguntas son obligatorios' });
+  }
+  try {
+    const { error } = await supabase
+      .from('talleres')
+      .update({
+        titulo:    sanitizeText(titulo),
+        preguntas: JSON.stringify(preguntas)
+      })
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error PUT /talleres/:id:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/talleres/:id/enable — habilitar taller (deshabilita todos primero)
 router.put('/:id/enable', async (req, res) => {
   const id = req.params.id;

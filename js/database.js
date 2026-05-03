@@ -86,6 +86,16 @@ window.DB = {
     return await res.json();
   },
 
+  async updateExam(id, titulo, preguntas) {
+    const res = await fetch(`${API_BASE}/exams/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titulo, preguntas })
+    });
+    if (!res.ok) throw new Error('Error updating exam');
+    return await res.json();
+  },
+
   async enableExam(id) {
     const res = await fetch(`${API_BASE}/exams/${id}/enable`, { method: 'PUT' });
     if (!res.ok) throw new Error('Error enabling exam');
@@ -169,6 +179,16 @@ window.DB = {
       body: JSON.stringify({ titulo, preguntas })
     });
     if (!res.ok) throw new Error('Error creating workshop');
+    return await res.json();
+  },
+
+  async updateWorkshop(id, titulo, preguntas) {
+    const res = await fetch(`${API_BASE}/talleres/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titulo, preguntas })
+    });
+    if (!res.ok) throw new Error('Error updating workshop');
     return await res.json();
   },
 

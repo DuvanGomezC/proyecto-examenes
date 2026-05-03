@@ -945,6 +945,8 @@ async function renderExamsTab() {
                     ${ex.estado === 'Deshabilitado'
                       ? `<button class="btn btn--sm btn--success" data-action="enable" data-id="${ex.id}">✓ Habilitar</button>`
                       : `<button class="btn btn--sm btn--outline" data-action="disable" data-id="${ex.id}">⊘ Deshabilitar</button>`}
+                    <button class="btn btn--ghost btn--sm" data-action="view-exam-detail" data-id="${ex.id}" title="Ver preguntas">👁️</button>
+                    <button class="btn btn--ghost btn--sm" data-action="edit-exam" data-id="${ex.id}" title="Editar examen">✏️</button>
                     <button class="btn btn--ghost btn--sm" data-action="delete-exam" data-id="${ex.id}" data-titulo="${escapeHtml(ex.titulo)}" title="Eliminar">🗑️</button>
                   </td>
                 </tr>`).join('')}
@@ -957,6 +959,16 @@ async function renderExamsTab() {
 
   document.getElementById('create-exam-btn').addEventListener('click', async (e) => {
     await withBtnLoading(e.currentTarget, async () => await openExamModal());
+  });
+  document.querySelectorAll('[data-action="view-exam-detail"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await withBtnLoading(btn, async () => await openViewExamModal(parseInt(btn.dataset.id)));
+    });
+  });
+  document.querySelectorAll('[data-action="edit-exam"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await withBtnLoading(btn, async () => await openExamModal(parseInt(btn.dataset.id)));
+    });
   });
   document.querySelectorAll('[data-action="enable"]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -989,63 +1001,170 @@ async function renderExamsTab() {
   });
 }
 
-async function openExamModal() {
-  const questionsHtml = Array.from({ length: 10 }, (_, i) => `
-    <details class="question-block" open="${i === 0 ? 'open' : ''}">
+async function openExamModal(examId) {
+  // ── Claves de localStorage ──────────────────────────────────────────────────
+  const DRAFT_KEY = examId ? `inarfotec_exam_edit_${examId}` : 'inarfotec_exam_draft';
+  const isEdit    = !!examId;
+
+  // ── Cargar datos base: examen existente (edición) o borrador guardado ───────
+  let baseExam = null;
+  if (isEdit) {
+    baseExam = await DB.getExamById(examId);
+    if (!baseExam) { showToast('No se encontró el examen.', 'error'); return; }
+  }
+
+  // Intentar recuperar borrador de localStorage
+  let draft = null;
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (raw) draft = JSON.parse(raw);
+  } catch(e) { /* borrador corrupto, ignorar */ }
+
+  // El borrador tiene prioridad sobre los datos de BD (para edición)
+  const initialTitulo    = draft?.titulo    ?? baseExam?.titulo    ?? '';
+  const initialPreguntas = draft?.preguntas ?? baseExam?.preguntas ?? null;
+
+  // ── Helper: guardar borrador en localStorage ────────────────────────────────
+  function saveDraft() {
+    try {
+      const titulo = document.getElementById('exam-titulo')?.value ?? '';
+      const preguntas = [];
+      for (let i = 0; i < 10; i++) {
+        const textoEl = document.getElementById(`q-texto-${i}`);
+        if (!textoEl) continue;
+        const tipo = document.getElementById(`q-tipo-${i}`)?.value ?? 'vf';
+        const entry = { texto: textoEl.value, tipo };
+        if (tipo === 'vf') {
+          const checked = document.querySelector(`input[name="vf-correct-${i}"]:checked`);
+          entry.respuesta_correcta = checked ? checked.value : null;
+        } else {
+          const opciones = [];
+          let correcta = null;
+          for (let j = 0; j < 4; j++) {
+            const t = document.getElementById(`q${i}-opt-${j}`)?.value ?? '';
+            opciones.push(t);
+            if (document.getElementById(`q${i}-correct-${j}`)?.checked) correcta = j;
+          }
+          entry.opciones = opciones;
+          entry.correcta = correcta;
+        }
+        preguntas.push(entry);
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ titulo, preguntas }));
+    } catch(e) { /* silencioso */ }
+  }
+
+  // ── Construir HTML de preguntas ─────────────────────────────────────────────
+  const questionsHtml = Array.from({ length: 10 }, (_, i) => {
+    const p    = initialPreguntas?.[i] ?? null;
+    const tipo = p?.tipo ?? 'vf';
+    const draftP = draft?.preguntas?.[i];
+
+    // Texto: borrador > datos BD
+    const texto = draftP?.texto ?? p?.texto ?? '';
+
+    // Opciones según tipo
+    let optionsHtml;
+    if (tipo === 'vf') {
+      const correcta = draftP?.respuesta_correcta ?? p?.respuesta_correcta ?? null;
+      optionsHtml = renderVFOptions(i, correcta);
+    } else {
+      // Para múltiple, reconstruir objeto q compatible con renderMultipleOptions
+      const qObj = p ? JSON.parse(JSON.stringify(p)) : null;
+      if (draftP && qObj) {
+        // Sobreescribir opciones con borrador si existen
+        if (draftP.opciones) {
+          draftP.opciones.forEach((t, j) => {
+            if (qObj.opciones?.[j]) qObj.opciones[j].texto = t;
+          });
+        }
+        if (draftP.correcta !== null && draftP.correcta !== undefined) {
+          qObj.respuesta_correcta = `q${i}-opt-${draftP.correcta}`;
+        }
+      }
+      optionsHtml = renderMultipleOptions(i, qObj);
+    }
+
+    return `
+    <details class="question-block" ${i === 0 ? 'open' : ''}>
       <summary class="question-block__summary">
         <span class="q-number">Pregunta ${i + 1}</span>
-        <span class="q-preview" id="q-preview-${i}">Sin texto</span>
+        <span class="q-preview" id="q-preview-${i}">${escapeHtml(texto) || 'Sin texto'}</span>
       </summary>
       <div class="question-block__body">
         <div class="form-group">
           <label>Texto de la pregunta <span class="required">*</span></label>
-          <textarea id="q-texto-${i}" rows="2" placeholder="Escribe la pregunta aquí..." class="q-texto"></textarea>
+          <textarea id="q-texto-${i}" rows="2" placeholder="Escribe la pregunta aquí..." class="q-texto">${escapeHtml(texto)}</textarea>
         </div>
         <div class="form-group">
           <label>Tipo de pregunta</label>
           <select id="q-tipo-${i}" class="q-tipo" data-idx="${i}">
-            <option value="vf">Verdadero / Falso</option>
-            <option value="multiple">Opción Múltiple (A,B,C,D)</option>
+            <option value="vf"       ${tipo==='vf'       ?'selected':''}>Verdadero / Falso</option>
+            <option value="multiple" ${tipo==='multiple' ?'selected':''}>Opción Múltiple (A,B,C,D)</option>
           </select>
         </div>
-        <div id="q-options-${i}" class="q-options-container">
-          ${renderVFOptions(i, null)}
-        </div>
+        <div id="q-options-${i}" class="q-options-container">${optionsHtml}</div>
         <p class="text-muted" style="font-size:0.76rem;margin-top:4px;">Puntaje: 0.5 pts por respuesta correcta</p>
       </div>
-    </details>
-  `).join('');
+    </details>`;
+  }).join('');
+
+  const hasDraft = !!draft;
+  const draftBanner = hasDraft ? `
+    <div class="draft-banner" id="exam-draft-banner">
+      <span>📝 Se recuperó un borrador guardado automáticamente.</span>
+      <button type="button" class="btn btn--ghost btn--sm" id="exam-discard-draft" style="color:#e63946;padding:2px 8px;">Descartar borrador</button>
+    </div>` : '';
 
   showModal(`
     <div class="modal__header">
-      <h3>Crear Nuevo Examen</h3>
+      <h3>${isEdit ? '✏️ Editar Examen' : 'Crear Nuevo Examen'}</h3>
       <button class="modal__close" id="modal-close">✕</button>
     </div>
     <form id="exam-form" novalidate>
+      ${draftBanner}
       <div class="form-group">
         <label>Título del módulo / Examen <span class="required">*</span></label>
-        <input type="text" id="exam-titulo" placeholder="Ej: Módulo 1 - Motores Diesel" required>
+        <input type="text" id="exam-titulo" placeholder="Ej: Módulo 1 - Motores Diesel" value="${escapeHtml(initialTitulo)}" required>
       </div>
       <div class="questions-list">${questionsHtml}</div>
       <div id="exam-form-error" class="form-error"></div>
       <div class="modal__footer">
         <button type="button" class="btn btn--outline" id="modal-close-2">Cancelar</button>
-        <button type="submit" class="btn btn--primary">Guardar Examen</button>
+        <button type="submit" class="btn btn--primary">${isEdit ? 'Guardar Cambios' : 'Guardar Examen'}</button>
       </div>
     </form>
   `, () => {
-    document.getElementById('modal-close').addEventListener('click', closeModal);
-    document.getElementById('modal-close-2').addEventListener('click', closeModal);
+    // ── Cerrar modal: guardar borrador antes de cerrar ──────────────────────
+    const doClose = () => { saveDraft(); closeModal(); };
+    document.getElementById('modal-close').addEventListener('click', doClose);
+    document.getElementById('modal-close-2').addEventListener('click', doClose);
 
-    // Update preview text on textarea change
+    // Clic fuera del modal también guarda borrador
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+    }
+
+    // ── Descartar borrador ──────────────────────────────────────────────────
+    document.getElementById('exam-discard-draft')?.addEventListener('click', async () => {
+      if (await window.showConfirm('¿Descartar el borrador y cargar los datos originales?')) {
+        localStorage.removeItem(DRAFT_KEY);
+        await openExamModal(examId);
+      }
+    });
+
+    // ── Autoguardado en cada cambio ─────────────────────────────────────────
+    document.getElementById('exam-titulo')?.addEventListener('input', saveDraft);
+
     document.querySelectorAll('.q-texto').forEach((ta, i) => {
       ta.addEventListener('input', () => {
         const preview = document.getElementById(`q-preview-${i}`);
         if (preview) preview.textContent = ta.value.trim() || 'Sin texto';
+        saveDraft();
       });
     });
 
-    // Tipo change handler
     document.querySelectorAll('.q-tipo').forEach(sel => {
       sel.addEventListener('change', () => {
         const idx = parseInt(sel.dataset.idx);
@@ -1053,9 +1172,19 @@ async function openExamModal() {
         container.innerHTML = sel.value === 'vf'
           ? renderVFOptions(idx, null)
           : renderMultipleOptions(idx, null);
+        // Re-adjuntar autoguardado a los nuevos inputs
+        container.querySelectorAll('input').forEach(inp => inp.addEventListener('change', saveDraft));
+        saveDraft();
       });
     });
 
+    // Autoguardado en opciones ya renderizadas
+    document.querySelectorAll('.q-options-container input').forEach(inp => {
+      inp.addEventListener('change', saveDraft);
+      inp.addEventListener('input', saveDraft);
+    });
+
+    // ── Submit ──────────────────────────────────────────────────────────────
     document.getElementById('exam-form').addEventListener('submit', async e => {
       e.preventDefault();
       const errEl = document.getElementById('exam-form-error');
@@ -1066,14 +1195,10 @@ async function openExamModal() {
       const preguntas = [];
       for (let i = 0; i < 10; i++) {
         const texto = document.getElementById(`q-texto-${i}`).value.trim();
-        const tipo = document.getElementById(`q-tipo-${i}`).value;
+        const tipo  = document.getElementById(`q-tipo-${i}`).value;
         if (!texto) { errEl.textContent = `La pregunta ${i + 1} no tiene texto.`; return; }
 
-        const pregunta = {
-          id: `q${i}`,
-          texto,
-          tipo,
-        };
+        const pregunta = { id: `q${i}`, texto, tipo };
 
         if (tipo === 'vf') {
           const checked = document.querySelector(`input[name="vf-correct-${i}"]:checked`);
@@ -1098,11 +1223,142 @@ async function openExamModal() {
 
       const submitBtn = e.target.querySelector('[type="submit"]');
       await withBtnLoading(submitBtn, async () => {
-        await DB.createExam(titulo, preguntas);
-        showToast('Examen creado correctamente. Puedes habilitarlo en la tabla.');
+        if (isEdit) {
+          await DB.updateExam(examId, titulo, preguntas);
+          showToast('Examen actualizado correctamente.');
+        } else {
+          await DB.createExam(titulo, preguntas);
+          showToast('Examen creado correctamente. Puedes habilitarlo en la tabla.');
+        }
+        localStorage.removeItem(DRAFT_KEY); // limpiar borrador al guardar
         closeModal();
         await renderExamsTab();
       });
+    });
+  });
+}
+
+// ─── VER EXAMEN (solo lectura) ────────────────────────────────────────────────
+async function openViewExamModal(examId) {
+  const exam = await DB.getExamById(examId);
+  if (!exam) { showToast('No se encontró el examen.', 'error'); return; }
+
+  const preguntasHtml = (exam.preguntas || []).map((q, i) => {
+    let respuestaHtml = '';
+    if (q.tipo === 'vf') {
+      respuestaHtml = `
+        <div class="view-options">
+          ${['Verdadero', 'Falso'].map(opt => `
+            <div class="view-option ${q.respuesta_correcta === opt ? 'view-option--correct' : ''}">
+              <span class="option-marker">${opt === 'Verdadero' ? 'V' : 'F'}</span>
+              <span>${opt}</span>
+              ${q.respuesta_correcta === opt ? '<span class="view-correct-badge">✓ Correcta</span>' : ''}
+            </div>`).join('')}
+        </div>`;
+    } else {
+      const labels = ['A','B','C','D'];
+      respuestaHtml = `
+        <div class="view-options">
+          ${(q.opciones || []).map((opt, j) => `
+            <div class="view-option ${q.respuesta_correcta === opt.id ? 'view-option--correct' : ''}">
+              <span class="option-marker">${labels[j] || j+1}</span>
+              <span>${escapeHtml(opt.texto)}</span>
+              ${q.respuesta_correcta === opt.id ? '<span class="view-correct-badge">✓ Correcta</span>' : ''}
+            </div>`).join('')}
+        </div>`;
+    }
+    return `
+      <div class="view-question">
+        <div class="view-question__header">
+          <span class="view-question__num">Pregunta ${i + 1}</span>
+          <span class="view-question__type badge ${q.tipo === 'vf' ? 'badge--info' : 'badge--secondary'}">${q.tipo === 'vf' ? 'V/F' : 'Múltiple'}</span>
+        </div>
+        <p class="view-question__text">${escapeHtml(q.texto)}</p>
+        ${respuestaHtml}
+      </div>`;
+  }).join('');
+
+  showModal(`
+    <div class="modal__header">
+      <h3>👁️ Ver Examen</h3>
+      <button class="modal__close" id="view-exam-close">✕</button>
+    </div>
+    <div class="view-modal-body">
+      <div class="view-modal-title">
+        <h2>${escapeHtml(exam.titulo)}</h2>
+        <span class="badge ${exam.estado === 'Habilitado' ? 'badge--success' : 'badge--secondary'}">${exam.estado}</span>
+      </div>
+      <p class="text-muted" style="font-size:0.82rem;margin-bottom:16px;">
+        ${(exam.preguntas||[]).length} preguntas &bull; ${(exam.preguntas||[]).length * 0.5} pts máximo &bull; Creado: ${formatDate(exam.fecha_creacion)}
+      </p>
+      <div class="view-questions-list">${preguntasHtml}</div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--outline" id="view-exam-close-2">Cerrar</button>
+      <button class="btn btn--primary" id="view-exam-edit-btn">✏️ Editar este Examen</button>
+    </div>
+  `, () => {
+    document.getElementById('view-exam-close')?.addEventListener('click', closeModal);
+    document.getElementById('view-exam-close-2')?.addEventListener('click', closeModal);
+    document.getElementById('view-exam-edit-btn')?.addEventListener('click', async () => {
+      closeModal();
+      await openExamModal(examId);
+    });
+  });
+}
+
+// ─── VER TALLER (solo lectura) ────────────────────────────────────────────────
+async function openViewWorkshopModal(workshopId) {
+  const workshop = await DB.getWorkshopById(workshopId);
+  if (!workshop) { showToast('No se encontró el taller.', 'error'); return; }
+
+  const FL = {
+    bio:      { icon: '👤', label: '¿Quién es? / Biografía' },
+    que:      { icon: '❓', label: '¿Qué es?' },
+    para_que: { icon: '🎯', label: '¿Para qué sirve?' },
+    ejemplo:  { icon: '💡', label: 'Ejemplo de uso' }
+  };
+
+  const preguntasHtml = (workshop.preguntas || []).map((q, i) => {
+    const camposHtml = (q.campos || []).map(c => {
+      const fl = FL[c] || { icon: '📝', label: c };
+      return `<span class="view-campo-badge">${fl.icon} ${fl.label}</span>`;
+    }).join('');
+    return `
+      <div class="view-question">
+        <div class="view-question__header">
+          <span class="view-question__num">Pregunta ${i + 1}</span>
+        </div>
+        <p class="view-question__text">${escapeHtml(q.texto)}</p>
+        <div class="view-campos">${camposHtml}</div>
+      </div>`;
+  }).join('');
+
+  showModal(`
+    <div class="modal__header">
+      <h3>👁️ Ver Taller</h3>
+      <button class="modal__close" id="view-ws-close">✕</button>
+    </div>
+    <div class="view-modal-body">
+      <div class="view-modal-title">
+        <h2>${escapeHtml(workshop.titulo)}</h2>
+        <span class="badge ${workshop.estado === 'Habilitado' ? 'badge--success' : 'badge--secondary'}">${workshop.estado}</span>
+      </div>
+      <p class="text-muted" style="font-size:0.82rem;margin-bottom:16px;">
+        ${(workshop.preguntas||[]).length} pregunta(s) &bull; Creado: ${formatDate(workshop.fecha_creacion)}
+      </p>
+      <div class="view-questions-list">${preguntasHtml}</div>
+    </div>
+    <div class="modal__footer">
+      <button class="btn btn--outline" id="view-ws-close-2">Cerrar</button>
+      <button class="btn btn--primary" id="view-ws-edit-btn" style="background:#7c3aed;border-color:#7c3aed;">✏️ Editar este Taller</button>
+    </div>
+  `, () => {
+    document.getElementById('view-ws-close')?.addEventListener('click', closeModal);
+    document.getElementById('view-ws-close-2')?.addEventListener('click', closeModal);
+    document.getElementById('view-ws-edit-btn')?.addEventListener('click', async () => {
+      closeModal();
+      await openWorkshopModal(workshopId);
     });
   });
 }
@@ -1458,6 +1714,8 @@ async function renderWorkshopsTab() {
                     ${w.estado === 'Deshabilitado'
                       ? `<button class="btn btn--sm btn--success" data-action="enable-ws" data-id="${w.id}">✓ Habilitar</button>`
                       : `<button class="btn btn--sm btn--outline" data-action="disable-ws" data-id="${w.id}">⊘ Deshabilitar</button>`}
+                    <button class="btn btn--ghost btn--sm" data-action="view-ws-detail" data-id="${w.id}" title="Ver preguntas">👁️</button>
+                    <button class="btn btn--ghost btn--sm" data-action="edit-ws" data-id="${w.id}" title="Editar taller">✏️</button>
                     <button class="btn btn--ghost btn--sm" data-action="delete-ws" data-id="${w.id}" data-titulo="${escapeHtml(w.titulo)}" title="Eliminar">🗑️</button>
                   </td>
                 </tr>`).join('')}
@@ -1470,6 +1728,16 @@ async function renderWorkshopsTab() {
 
   document.getElementById('create-workshop-btn').addEventListener('click', async (e) => {
     await withBtnLoading(e.currentTarget, async () => await openWorkshopModal());
+  });
+  document.querySelectorAll('[data-action="view-ws-detail"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await withBtnLoading(btn, async () => await openViewWorkshopModal(parseInt(btn.dataset.id)));
+    });
+  });
+  document.querySelectorAll('[data-action="edit-ws"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await withBtnLoading(btn, async () => await openWorkshopModal(parseInt(btn.dataset.id)));
+    });
   });
   document.querySelectorAll('[data-action="enable-ws"]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1502,29 +1770,76 @@ async function renderWorkshopsTab() {
   });
 }
 
-async function openWorkshopModal() {
-  let questionCount = 1;
+async function openWorkshopModal(workshopId) {
+  // ── Claves de localStorage ──────────────────────────────────────────────────
+  const DRAFT_KEY = workshopId ? `inarfotec_ws_edit_${workshopId}` : 'inarfotec_ws_draft';
+  const isEdit    = !!workshopId;
 
-  function buildQuestionHtml(idx) {
+  // ── Cargar datos base ───────────────────────────────────────────────────────
+  let baseWorkshop = null;
+  if (isEdit) {
+    baseWorkshop = await DB.getWorkshopById(workshopId);
+    if (!baseWorkshop) { showToast('No se encontró el taller.', 'error'); return; }
+  }
+
+  // Intentar recuperar borrador de localStorage
+  let draft = null;
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (raw) draft = JSON.parse(raw);
+  } catch(e) { /* borrador corrupto, ignorar */ }
+
+  const initialTitulo    = draft?.titulo    ?? baseWorkshop?.titulo    ?? '';
+  const initialPreguntas = draft?.preguntas ?? baseWorkshop?.preguntas ?? [];
+
+  // ── Helper: guardar borrador ────────────────────────────────────────────────
+  function saveDraftWs() {
+    try {
+      const titulo = document.getElementById('ws-titulo')?.value ?? '';
+      const preguntas = [];
+      document.querySelectorAll('#ws-questions-list > details.question-block').forEach((block, i) => {
+        const textoEl = block.querySelector('.ws-q-texto');
+        const texto   = textoEl ? textoEl.value : '';
+        const campos  = [];
+        block.querySelectorAll('.ws-field-check:checked').forEach(cb => campos.push(cb.dataset.field));
+        preguntas.push({ texto, campos });
+      });
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ titulo, preguntas }));
+    } catch(e) { /* silencioso */ }
+  }
+
+  // ── Construir HTML de una pregunta ──────────────────────────────────────────
+  const ALL_CAMPOS = ['bio', 'que', 'para_que', 'ejemplo'];
+  const CAMPO_LABELS = {
+    bio:      '👤 ¿Quién es? / Biografía',
+    que:      '❓ ¿Qué es?',
+    para_que: '🎯 ¿Para qué sirve?',
+    ejemplo:  '💡 Ejemplo de uso'
+  };
+
+  function buildQuestionHtml(idx, preguntaData) {
+    const texto  = preguntaData?.texto  ?? '';
+    const campos = preguntaData?.campos ?? [];
     return `
       <details class="question-block" open>
         <summary class="question-block__summary">
           <span class="q-number">Pregunta ${idx + 1}</span>
-          <span class="q-preview" id="ws-q-preview-${idx}">Sin texto</span>
+          <span class="q-preview" id="ws-q-preview-${idx}">${escapeHtml(texto) || 'Sin texto'}</span>
           ${idx > 0 ? `<button type="button" class="btn btn--ghost btn--sm ws-remove-q" style="margin-left:auto;color:#e63946;" title="Eliminar">✕</button>` : ''}
         </summary>
         <div class="question-block__body">
           <div class="form-group">
             <label>Texto de la pregunta <span class="required">*</span></label>
-            <textarea id="ws-q-texto-${idx}" rows="2" placeholder="Escribe la pregunta aquí..." class="ws-q-texto" data-idx="${idx}"></textarea>
+            <textarea id="ws-q-texto-${idx}" rows="2" placeholder="Escribe la pregunta aquí..." class="ws-q-texto" data-idx="${idx}">${escapeHtml(texto)}</textarea>
           </div>
           <div class="form-group">
             <label style="margin-bottom:8px;display:block;font-weight:600;">Campos que debe completar el aprendiz: <span class="required">*</span></label>
             <div style="display:flex;flex-direction:column;gap:8px;">
-              <label class="option-check-label"><input type="checkbox" class="ws-field-check" id="ws-q${idx}-bio" data-field="bio"><span style="margin-left:6px;">👤 ¿Quién es? / Biografía</span></label>
-              <label class="option-check-label"><input type="checkbox" class="ws-field-check" id="ws-q${idx}-que" data-field="que"><span style="margin-left:6px;">❓ ¿Qué es?</span></label>
-              <label class="option-check-label"><input type="checkbox" class="ws-field-check" id="ws-q${idx}-para_que" data-field="para_que"><span style="margin-left:6px;">🎯 ¿Para qué sirve?</span></label>
-              <label class="option-check-label"><input type="checkbox" class="ws-field-check" id="ws-q${idx}-ejemplo" data-field="ejemplo"><span style="margin-left:6px;">💡 Ejemplo de uso</span></label>
+              ${ALL_CAMPOS.map(campo => `
+                <label class="option-check-label">
+                  <input type="checkbox" class="ws-field-check" id="ws-q${idx}-${campo}" data-field="${campo}" ${campos.includes(campo) ? 'checked' : ''}>
+                  <span style="margin-left:6px;">${CAMPO_LABELS[campo]}</span>
+                </label>`).join('')}
             </div>
             <p class="text-muted" style="font-size:0.76rem;margin-top:6px;">Activa al menos un campo por pregunta.</p>
           </div>
@@ -1532,48 +1847,90 @@ async function openWorkshopModal() {
       </details>`;
   }
 
+  // Construir lista inicial de preguntas
+  const initialQsHtml = initialPreguntas.length > 0
+    ? initialPreguntas.map((p, i) => buildQuestionHtml(i, p)).join('')
+    : buildQuestionHtml(0, null);
+
+  let questionCount = Math.max(initialPreguntas.length, 1);
+
+  const hasDraft = !!draft;
+  const draftBanner = hasDraft ? `
+    <div class="draft-banner" id="ws-draft-banner">
+      <span>📝 Se recuperó un borrador guardado automáticamente.</span>
+      <button type="button" class="btn btn--ghost btn--sm" id="ws-discard-draft" style="color:#e63946;padding:2px 8px;">Descartar borrador</button>
+    </div>` : '';
+
   showModal(`
     <div class="modal__header">
-      <h3>Crear Nuevo Taller</h3>
+      <h3>${isEdit ? '✏️ Editar Taller' : 'Crear Nuevo Taller'}</h3>
       <button class="modal__close" id="ws-modal-close">✕</button>
     </div>
     <form id="workshop-form" novalidate>
+      ${draftBanner}
       <div class="form-group">
         <label>Título del Taller <span class="required">*</span></label>
-        <input type="text" id="ws-titulo" placeholder="Ej: Taller de Sistemas de Frenos" required>
+        <input type="text" id="ws-titulo" placeholder="Ej: Taller de Sistemas de Frenos" value="${escapeHtml(initialTitulo)}" required>
       </div>
-      <div id="ws-questions-list">${buildQuestionHtml(0)}</div>
+      <div id="ws-questions-list">${initialQsHtml}</div>
       <button type="button" class="btn btn--outline" id="ws-add-question-btn" style="margin-top:12px;width:100%;">+ Agregar Pregunta</button>
       <div id="ws-form-error" class="form-error"></div>
       <div class="modal__footer">
         <button type="button" class="btn btn--outline" id="ws-modal-close-2">Cancelar</button>
-        <button type="submit" class="btn btn--primary" style="background:#7c3aed;border-color:#7c3aed;">Guardar Taller</button>
+        <button type="submit" class="btn btn--primary" style="background:#7c3aed;border-color:#7c3aed;">${isEdit ? 'Guardar Cambios' : 'Guardar Taller'}</button>
       </div>
     </form>
   `, () => {
-    document.getElementById('ws-modal-close').addEventListener('click', closeModal);
-    document.getElementById('ws-modal-close-2').addEventListener('click', closeModal);
+    // ── Cerrar: guardar borrador ────────────────────────────────────────────
+    const doClose = () => { saveDraftWs(); closeModal(); };
+    document.getElementById('ws-modal-close').addEventListener('click', doClose);
+    document.getElementById('ws-modal-close-2').addEventListener('click', doClose);
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
 
-    document.getElementById('ws-q-texto-0')?.addEventListener('input', function() {
-      const p = document.getElementById('ws-q-preview-0');
-      if (p) p.textContent = this.value.trim() || 'Sin texto';
+    // ── Descartar borrador ──────────────────────────────────────────────────
+    document.getElementById('ws-discard-draft')?.addEventListener('click', async () => {
+      if (await window.showConfirm('¿Descartar el borrador y cargar los datos originales?')) {
+        localStorage.removeItem(DRAFT_KEY);
+        await openWorkshopModal(workshopId);
+      }
     });
 
+    // ── Autoguardado en título ──────────────────────────────────────────────
+    document.getElementById('ws-titulo')?.addEventListener('input', saveDraftWs);
+
+    // ── Helper para adjuntar eventos a una pregunta recién creada ───────────
+    function wireQuestion(idx, detailsEl) {
+      const ta      = detailsEl.querySelector('.ws-q-texto') || document.getElementById(`ws-q-texto-${idx}`);
+      const preview = document.getElementById(`ws-q-preview-${idx}`);
+      if (ta && preview) {
+        ta.addEventListener('input', function() {
+          preview.textContent = this.value.trim() || 'Sin texto';
+          saveDraftWs();
+        });
+      }
+      detailsEl.querySelectorAll('.ws-field-check').forEach(cb => cb.addEventListener('change', saveDraftWs));
+      const removeBtn = detailsEl.querySelector('.ws-remove-q');
+      if (removeBtn) removeBtn.addEventListener('click', () => { detailsEl.remove(); saveDraftWs(); });
+    }
+
+    // Adjuntar eventos a preguntas ya renderizadas
+    document.querySelectorAll('#ws-questions-list > details.question-block').forEach((det, i) => wireQuestion(i, det));
+
+    // ── Agregar nueva pregunta ──────────────────────────────────────────────
     document.getElementById('ws-add-question-btn').addEventListener('click', () => {
-      const idx = questionCount;
-      const list = document.getElementById('ws-questions-list');
+      const idx     = questionCount;
+      const list    = document.getElementById('ws-questions-list');
       const wrapper = document.createElement('div');
-      wrapper.innerHTML = buildQuestionHtml(idx);
+      wrapper.innerHTML = buildQuestionHtml(idx, null);
       const details = wrapper.firstElementChild;
       list.appendChild(details);
-      const ta = document.getElementById(`ws-q-texto-${idx}`);
-      const preview = document.getElementById(`ws-q-preview-${idx}`);
-      if (ta && preview) ta.addEventListener('input', function() { preview.textContent = this.value.trim() || 'Sin texto'; });
-      const removeBtn = details.querySelector('.ws-remove-q');
-      if (removeBtn) removeBtn.addEventListener('click', () => details.remove());
+      wireQuestion(idx, details);
       questionCount++;
+      saveDraftWs();
     });
 
+    // ── Submit ──────────────────────────────────────────────────────────────
     document.getElementById('workshop-form').addEventListener('submit', async e => {
       e.preventDefault();
       const errEl = document.getElementById('ws-form-error');
@@ -1586,7 +1943,7 @@ async function openWorkshopModal() {
 
       const preguntas = [];
       for (let i = 0; i < questionBlocks.length; i++) {
-        const block = questionBlocks[i];
+        const block   = questionBlocks[i];
         const textoEl = block.querySelector('.ws-q-texto');
         if (!textoEl) continue;
         const texto = textoEl.value.trim();
@@ -1600,8 +1957,14 @@ async function openWorkshopModal() {
       const submitBtn = e.target.querySelector('[type="submit"]');
       await withBtnLoading(submitBtn, async () => {
         try {
-          await DB.createWorkshop(titulo, preguntas);
-          showToast('Taller creado. Puedes habilitarlo en la tabla.');
+          if (isEdit) {
+            await DB.updateWorkshop(workshopId, titulo, preguntas);
+            showToast('Taller actualizado correctamente.');
+          } else {
+            await DB.createWorkshop(titulo, preguntas);
+            showToast('Taller creado. Puedes habilitarlo en la tabla.');
+          }
+          localStorage.removeItem(DRAFT_KEY); // limpiar borrador al guardar
           closeModal();
           await renderWorkshopsTab();
         } catch (err) {
